@@ -91,6 +91,7 @@ selector_specificity <- function(steps) {
 }
 
 match_selector <- function(widget, selector, states = NULL) {
+  profile_add("selector_matches")
   for (steps in selector) {
     if (match_steps(widget, steps, length(steps), states)) return(TRUE)
   }

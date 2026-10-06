@@ -101,7 +101,7 @@ style_property_parsers <- list(
   align = function(v) check_choice(v, c("left", "center", "right"), "align"),
   valign = function(v) check_choice(v, c("top", "middle", "bottom"), "valign"),
   wrap = function(v) check_choice(v, wrap_modes, "wrap"),
-  layout = function(v) check_choice(v, names(layout_algorithms), "layout"),
+  layout = function(v) check_choice(v, ls(layout_algorithms, all.names = TRUE), "layout"),
   foreground = function(v) normalize_color(v),
   background = function(v) normalize_color(v),
   bold = function(v) check_optional_flag(v, "bold"),

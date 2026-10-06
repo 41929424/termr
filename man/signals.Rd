@@ -12,11 +12,11 @@
 \alias{update_signal}
 \title{Reactive values, computed values and watchers}
 \usage{
-signal(value = NULL)
+signal(value = NULL, name = NULL)
 
-computed(fn)
+computed(fn, name = NULL)
 
-watch(fn)
+watch(fn, name = NULL)
 
 dispose(x)
 
@@ -30,6 +30,8 @@ update_signal(x, fn)
 }
 \arguments{
 \item{value}{Initial value of a signal.}
+
+\item{name}{Optional graph label used in diagnostics and cycle paths.}
 
 \item{fn}{Function applied to the current value.}
 

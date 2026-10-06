@@ -50,8 +50,17 @@ ScrollView <- R6::R6Class(
     #'   are clamped to the scrollable range at the next layout.
     #' @param x,y New offsets; `NULL` keeps the current one.
     scroll_to = function(x = NULL, y = NULL) {
-      if (!is.null(x)) self$set_state("offset_x", private$clamp(as.integer(round(x)), "x"))
-      if (!is.null(y)) self$set_state("offset_y", private$clamp(as.integer(round(y)), "y"))
+      ox <- private$.state$offset_x
+      oy <- private$.state$offset_y
+      if (!is.null(x)) private$.state$offset_x <- private$clamp(as.integer(round(x)), "x")
+      if (!is.null(y)) private$.state$offset_y <- private$clamp(as.integer(round(y)), "y")
+      if (ox != private$.state$offset_x || oy != private$.state$offset_y) {
+        # Translation changes layout positions, but not natural extents.
+        private$.dirty <- TRUE
+        app <- self$app
+        if (!is.null(app)) app$request_repaint(self)
+        self$post_message("scroll.changed", list(x = private$.state$offset_x, y = private$.state$offset_y))
+      }
       invisible(self)
     },
 

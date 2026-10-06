@@ -3,3 +3,5 @@
 .RData
 *.tar.gz
 retui.Rcheck/
+/tools/validation-0.4/
+/tools/bench/baselines/*.Rprof*

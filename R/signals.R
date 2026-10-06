@@ -28,12 +28,14 @@ rx$pending <- list()     # effects waiting to run, by id
 rx$flushing <- FALSE
 rx$next_id <- 0L
 rx$max_runs <- 10000L
+rx$stack <- list()
 
-new_node <- function(kind, fn = NULL, value = NULL) {
+new_node <- function(kind, fn = NULL, value = NULL, name = NULL) {
   rx$next_id <- rx$next_id + 1L
   node <- new.env(parent = emptyenv())
   node$kind <- kind
   node$id <- rx$next_id
+  node$name <- name %||% paste0(kind, "#", node$id)
   node$fn <- fn
   node$value <- value
   node$version <- 0L
@@ -43,6 +45,11 @@ new_node <- function(kind, fn = NULL, value = NULL) {
   node$evaluating <- FALSE
   node$disposed <- FALSE
   node$seen <- list()      # dependency versions seen at the last run
+  node$reads <- 0L
+  node$evaluations <- 0L
+  node$runs <- 0L
+  node$invalidations <- 0L
+  node$writes <- 0L
   node
 }
 
@@ -67,6 +74,7 @@ unlink_deps <- function(node) {
 invalidate_subs <- function(node) {
   for (sub in node$subs) {
     if (sub$disposed) next
+    sub$invalidations <- sub$invalidations + 1L
     if (sub$kind == "computed") {
       if (!sub$dirty) {
         sub$dirty <- TRUE
@@ -81,15 +89,19 @@ invalidate_subs <- function(node) {
 # Evaluate a computed if it is stale. Returns its value.
 refresh_computed <- function(node) {
   if (node$evaluating) {
-    stop("Cycle detected: a computed() depends on itself.", call. = FALSE)
+    path <- c(vapply(rx$stack, `[[`, "", "name"), node$name)
+    stop("Reactive cycle: ", paste(path, collapse = " -> "), call. = FALSE)
   }
   if (!node$dirty || node$disposed) return(node$value)
   unlink_deps(node)
   node$evaluating <- TRUE
+  node$evaluations <- node$evaluations + 1L
+  rx$stack[[length(rx$stack) + 1L]] <- node
   old <- rx$observer
   rx$observer <- node
   on.exit({
     rx$observer <- old
+    rx$stack[[length(rx$stack)]] <- NULL
     node$evaluating <- FALSE
   }, add = TRUE)
   value <- node$fn()
@@ -119,6 +131,7 @@ run_effect <- function(node) {
   on.exit(rx$observer <- old, add = TRUE)
   node$fn()
   node$version <- node$version + 1L
+  node$runs <- node$runs + 1L
   for (dep in node$deps) node$seen[[as.character(dep$id)]] <- dep$version
   invisible()
 }
@@ -176,6 +189,7 @@ flush_effects <- function() {
 #' @param fn A function of no arguments.
 #' @param x A signal or computed.
 #' @param expr An expression.
+#' @param name Optional graph label used in diagnostics and cycle paths.
 #' @return `signal()` and `computed()` return functions (classes
 #'   `termr_signal` / `termr_computed`); `watch()` returns a handle with a
 #'   `$dispose()` method.
@@ -193,15 +207,18 @@ NULL
 
 #' @rdname signals
 #' @export
-signal <- function(value = NULL) {
-  node <- new_node("signal", value = value)
+signal <- function(value = NULL, name = NULL) {
+  check_scalar_character(name, "name", allow_null = TRUE)
+  node <- new_node("signal", value = value, name = name)
   node$dirty <- FALSE
   f <- function(value) {
     if (missing(value)) {
+      node$reads <- node$reads + 1L
       track(node)
       return(node$value)
     }
     if (identical(value, node$value)) return(invisible(node$value))
+    node$writes <- node$writes + 1L
     node$value <- value
     node$version <- node$version + 1L
     invalidate_subs(node)
@@ -213,10 +230,12 @@ signal <- function(value = NULL) {
 
 #' @rdname signals
 #' @export
-computed <- function(fn) {
+computed <- function(fn, name = NULL) {
   check_function(fn, "fn")
-  node <- new_node("computed", fn = fn)
+  check_scalar_character(name, "name", allow_null = TRUE)
+  node <- new_node("computed", fn = fn, name = name)
   f <- function() {
+    node$reads <- node$reads + 1L
     track(node)
     refresh_computed(node)
   }
@@ -225,9 +244,10 @@ computed <- function(fn) {
 
 #' @rdname signals
 #' @export
-watch <- function(fn) {
+watch <- function(fn, name = NULL) {
   check_function(fn, "fn")
-  node <- new_node("effect", fn = fn)
+  check_scalar_character(name, "name", allow_null = TRUE)
+  node <- new_node("effect", fn = fn, name = name)
   # The first run happens now; reads inside it are tracked.
   rx$depth <- rx$depth + 1L
   tryCatch(run_effect(node), error = function(e) {
@@ -302,6 +322,28 @@ update_signal <- function(x, fn) {
   if (!inherits(x, "termr_signal")) stop("`x` must be a signal().", call. = FALSE)
   check_function(fn, "fn")
   x(fn(peek(x)))
+}
+
+#' Inspect one node in the experimental signal graph
+#'
+#' Return dependency and subscriber names, lifecycle state, and cumulative
+#' counters for a signal, computed value, or watcher.
+#' @param x A `signal()`, `computed()`, or `watch()` result.
+#' @return A list describing the node and its direct graph edges.
+#' @export
+inspect_signal <- function(x) {
+  node <- if (inherits(x, "termr_watch")) x$node else if (inherits(x, c("termr_signal", "termr_computed"))) {
+    attr(x, "node")
+  } else stop("`x` must be a signal(), computed() or watch().", call. = FALSE)
+  names_of <- function(nodes) if (!length(nodes)) character() else
+    unname(vapply(nodes, `[[`, "", "name"))
+  list(
+    id = node$id, kind = node$kind, name = node$name, disposed = node$disposed,
+    dirty = node$dirty, version = node$version,
+    dependencies = names_of(node$deps), subscribers = names_of(node$subs),
+    counters = c(reads = node$reads, evaluations = node$evaluations,
+                 runs = node$runs, invalidations = node$invalidations, writes = node$writes)
+  )
 }
 
 #' @export

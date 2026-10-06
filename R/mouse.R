@@ -98,7 +98,7 @@ hit_test <- function(widget, x, y, clip = NULL, inherited = NULL) {
   if (rect_is_empty(area) || !rect_contains(area, x, y)) return(NULL)
   st <- widget$computed_style(inherited)
   inner <- rect_intersect(widget$child_clip(st), clip)
-  kids <- widget$children
+  kids <- render_children(widget)
   for (child in rev(kids)) {
     hit <- hit_test(child, x, y, inner, st)
     if (!is.null(hit)) return(hit)

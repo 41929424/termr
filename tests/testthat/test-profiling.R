@@ -1,0 +1,16 @@
+test_that("frame profiling is opt-in and counts actual work", {
+  view <- scroll_view(vertical(lapply(1:200, function(i) label(paste("row", i)))))
+  pilot <- test_app(app(view), 20, 6)
+  expect_null(pilot$app$profile_last_frame)
+  withr::local_options(termr.profile = TRUE)
+  view$scroll_by(dy = 10)
+  pilot$step()
+  profile <- pilot$app$profile_last_frame
+  expect_identical(profile$widgets_measured, 0)
+  expect_lte(profile$widgets_laid_out, 14)
+  expect_lte(profile$widgets_painted, 10)
+  expect_true(all(unlist(profile) >= 0))
+  expect_gt(profile$ansi_bytes, 0)
+  expect_null(termr_env$profile)
+  pilot$stop()
+})

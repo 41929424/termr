@@ -1,6 +1,6 @@
 on:
   push:
-    branches: [main, master, develop-0.2, develop-0.3]
+    branches: [main, master, develop-0.2, develop-0.3, develop-0.4]
   pull_request:
 
 name: R-CMD-check
@@ -38,6 +38,12 @@ jobs:
           upload-snapshots: true
           build_args: 'c("--no-manual")'
           args: 'c("--no-manual", "--as-cran")'
+
+      - name: Run extended regression suite
+        if: runner.os == 'Windows'
+        env:
+          NOT_CRAN: true
+        run: Rscript -e "testthat::test_local(reporter = 'summary')"
 
   pty:
     # Drives the Unix terminal driver in a real pseudo terminal.

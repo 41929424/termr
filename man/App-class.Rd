@@ -62,6 +62,9 @@ This is the app's own clipboard, not the operating system's.}
 repainted cells, dirty rectangles, whether it was a full repaint and
 the ANSI bytes written. For benchmarks and debugging.}
 
+    \item{\code{profile_last_frame}}{Optional timings and structural counters;
+enable with \code{options(termr.profile = TRUE)}. Times are milliseconds.}
+
     \item{\code{frame_stats}}{Number of full and incremental repaints and of
 layout passes so far.}
 

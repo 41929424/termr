@@ -533,6 +533,9 @@ App <- R6::R6Class(
     #'   repainted cells, dirty rectangles, whether it was a full repaint and
     #'   the ANSI bytes written. For benchmarks and debugging.
     last_paint = function(value) if (missing(value)) private$.last_paint else read_only("last_paint"),
+    #' @field profile_last_frame Optional timings and structural counters;
+    #'   enable with `options(termr.profile = TRUE)`. Times are milliseconds.
+    profile_last_frame = function(value) if (missing(value)) private$.profile_last_frame else read_only("profile_last_frame"),
     #' @field frame_stats Number of full and incremental repaints and of
     #'   layout passes so far.
     frame_stats = function(value) if (missing(value)) private$.frame_stats else read_only("frame_stats"),
@@ -565,6 +568,7 @@ App <- R6::R6Class(
     .frame_stats = c(full = 0L, incremental = 0L, layouts = 0L),
     .layout_dirty = TRUE,
     .last_paint = NULL,
+    .profile_last_frame = NULL,
     .layout_epoch = -1,
     .layout_size = NULL,
     .snapshot = NULL,
@@ -866,6 +870,13 @@ App <- R6::R6Class(
     },
 
     refresh_screen = function() {
+      profiling <- isTRUE(getOption("termr.profile", FALSE))
+      if (profiling) {
+        previous_profile <- termr_env$profile
+        termr_env$profile <- profile_start()
+        on.exit(termr_env$profile <- previous_profile, add = TRUE)
+        frame_start <- now_seconds()
+      }
       size <- private$.size
       bounds <- rect(1L, 1L, size[["width"]], size[["height"]])
       layers <- private$.screens$visible()
@@ -898,6 +909,10 @@ App <- R6::R6Class(
         snapshot <- private$.snapshot
         changes <- list()
       }
+      if (profiling) {
+        paint_start <- now_seconds()
+        profile_add("layout_ms", (paint_start - frame_start) * 1000)
+      }
       incremental <- isTRUE(getOption("termr.incremental", TRUE)) && !private$.full_repaint &&
         !is.null(previous) && previous$width == bounds$width && previous$height == bounds$height &&
         !is.null(changes) && identical(layers, private$.layers)
@@ -918,11 +933,15 @@ App <- R6::R6Class(
         repainted <- rect_area(bounds)
       }
       bytes_before <- private$.renderer$bytes_written
+      if (profiling) profile_add("paint_ms", (now_seconds() - paint_start) * 1000)
       private$.renderer$render(frame)
       private$.last_paint <- list(
         screen_cells = rect_area(bounds), repainted_cells = repainted, rects = length(rects),
         full = !incremental, ansi_bytes = private$.renderer$bytes_written - bytes_before
       )
+      private$.profile_last_frame <- if (profiling) c(as.list(termr_env$profile), list(
+        frame_ms = (now_seconds() - frame_start) * 1000, dirty_rectangles = length(rects),
+        dirty_cells = repainted, ansi_bytes = private$.last_paint$ansi_bytes)) else NULL
       private$.frame_times <- utils::tail(c(private$.frame_times, private$clock()), 60L)
       key <- if (incremental) "incremental" else "full"
       private$.frame_stats[[key]] <- private$.frame_stats[[key]] + 1L

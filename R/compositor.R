@@ -10,10 +10,11 @@ paint_tree <- function(widget, buffer, clip = buffer$bounds(), inherited = NULL)
   area <- rect_intersect(widget$region, clip)
   if (rect_is_empty(area)) return(invisible())
   st <- widget$computed_style(inherited)
+  profile_add("widgets_painted")
   widget$paint(buffer, area, st)
   inner <- rect_intersect(widget$child_clip(st), clip)
   if (rect_is_empty(inner)) return(invisible())
-  for (child in widget$children) paint_tree(child, buffer, inner, st)
+  for (child in render_children(widget)) paint_tree(child, buffer, inner, st)
   invisible()
 }
 

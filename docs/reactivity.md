@@ -36,6 +36,10 @@ app(vertical(
   app run in a batch automatically.
 * `peek(x)` / `untracked(expr)`: read without a dependency. `dispose()` ends a
   watcher or computed. `update_signal(x, fn)` applies a function.
+* `inspect_signal(x)` shows a node's direct dependencies and subscribers,
+  disposed/dirty state, version, and cumulative read/evaluation/run/write
+  counters. Give nodes a `name` to make cycle paths readable; errors include
+  the named path through the cycle.
 
 `label()`, `button()`, `progress_bar()`, `metric()`, `sparkline()` and
 `key_value()` accept a function wherever they take their value; the function

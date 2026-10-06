@@ -124,9 +124,9 @@ test_that("peek and untracked create no dependency", {
 })
 
 test_that("cycles are detected", {
-  a <- computed(function() b())
-  b <- computed(function() a())
-  expect_error(a(), "Cycle detected")
+  a <- computed(function() b(), name = "left")
+  b <- computed(function() a(), name = "right")
+  expect_error(a(), "left -> right -> left")
   old <- rx$max_runs
   rx$max_runs <- 200L
   on.exit(rx$max_runs <- old)
@@ -230,6 +230,21 @@ test_that("other widgets accept reactive functions", {
   expect_identical(m$value, 50)
   expect_identical(s$data, c(1, 0.5))
   expect_identical(kv$data$value, 0.5)
+})
+
+test_that("signal inspection reports graph edges, counters, and lifecycle", {
+  source <- signal(2, name = "source")
+  doubled <- computed(function() source() * 2, name = "doubled")
+  calls <- 0L
+  effect <- watch(function() { doubled(); calls <<- calls + 1L }, name = "consumer")
+  expect_identical(inspect_signal(doubled)$dependencies, "source")
+  expect_identical(inspect_signal(source)$subscribers, "doubled")
+  source(3)
+  expect_identical(inspect_signal(effect)$name, "consumer")
+  expect_gt(inspect_signal(effect)$counters[["runs"]], 1)
+  expect_gt(inspect_signal(source)$counters[["writes"]], 0)
+  dispose(effect)
+  expect_true(inspect_signal(effect)$disposed)
 })
 
 test_that("a thousand signals and watchers stay fast", {

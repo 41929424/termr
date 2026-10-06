@@ -62,13 +62,20 @@ Renderer <- R6::R6Class(
     },
 
     render = function(buffer) {
+      profiling <- !is.null(termr_env$profile)
+      if (profiling) started <- now_seconds()
       patch <- diff_screen(self$front, buffer)
+      if (profiling) {
+        profile_add("diff_ms", (now_seconds() - started) * 1000)
+        started <- now_seconds()
+      }
       if (length(patch$runs) > 0L || patch$full) {
         out <- patch_to_ansi(patch, self$color_mode)
         if (self$synchronized) out <- paste0(ansi_sync(TRUE), out, ansi_sync(FALSE))
         private$write(out)
         self$bytes_written <- self$bytes_written + nchar(out, type = "bytes")
       }
+      if (profiling) profile_add("ansi_ms", (now_seconds() - started) * 1000)
       self$frames <- self$frames + 1L
       self$front <- buffer$copy()
       invisible(patch)

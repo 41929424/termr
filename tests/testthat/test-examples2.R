@@ -115,7 +115,7 @@ test_that("editor edits, undoes, searches and reports the position", {
   expect_match(ed$selection, "filler")
   pilot$press("escape")
   pilot$press("ctrl+g")
-  expect_s3_class(pilot$app$screen, "ModalScreen")
+  expect_false(inherits(pilot$app$screen, "ModalScreen"))
   pilot$type("5")
   pilot$press("enter")
   expect_identical(ed$cursor_row, 5L)
