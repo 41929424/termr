@@ -19,7 +19,8 @@ text_area(
   tab_behavior = "focus",
   auto_indent = FALSE,
   validate = NULL,
-  max_history = 200L
+  max_history = 200L,
+  highlighter = NULL
 )
 }
 \arguments{
@@ -41,7 +42,7 @@ text_area(
 
 \item{read_only}{Block editing?}
 
-\item{language}{Reserved for syntax highlighting (ignored for now).}
+\item{language}{Optional language label supplied to the highlighter.}
 
 \item{tab_size}{Spaces per tab stop.}
 
@@ -53,12 +54,16 @@ text_area(
 valid or a message.}
 
 \item{max_history}{Maximum number of undo steps.}
+
+\item{highlighter}{Optional viewport-first syntax highlighter; see
+\code{r_highlighter()}.}
 }
 \value{
 A \code{TextArea} widget. Useful members: \verb{$value}, \verb{$set_text()},
 \verb{$insert()}, \verb{$selection}, \verb{$cursor_row}, \verb{$cursor_column},
-\verb{$goto_line()}, \verb{$undo()}, \verb{$redo()}, \verb{$find()}, \verb{$find_next()},
-\verb{$find_previous()}, \verb{$match_count}.
+\verb{$goto_line()}, \verb{$cursor_position()}, \verb{$undo()}, \verb{$redo()}, \verb{$find()},
+\verb{$replace()}, \verb{$replace_all()}, \verb{$find_next()}, \verb{$find_previous()},
+\verb{$match_count}.
 }
 \description{
 An editable text area with a cursor, selection, undo/redo, search and

@@ -17,7 +17,7 @@ TextArea <- R6::R6Class(
     #' @field read_only Block editing (cursor, selection, copy and search
     #'   still work)?
     read_only = FALSE,
-    #' @field language Reserved for syntax highlighting; not used yet.
+    #' @field language Optional language name passed to the configured highlighter.
     language = NULL,
     #' @field tab_size Spaces inserted by Tab (and used for tabs in loaded
     #'   text).
@@ -27,6 +27,9 @@ TextArea <- R6::R6Class(
     tab_behavior = "focus",
     #' @field auto_indent Copy the indentation of the current line on Enter?
     auto_indent = FALSE,
+    #' @field highlighter Optional function `(lines, state)` returning a list
+    #'   of per-line data frames with 1-based inclusive `start`, `end`, `token`.
+    highlighter = NULL,
     #' @field validate `NULL` or `function(value)` returning `NULL` (valid)
     #'   or an error message.
     validate = NULL,
@@ -42,7 +45,7 @@ TextArea <- R6::R6Class(
     initialize = function(value = "", placeholder = "", id = NULL, classes = NULL, style = NULL,
                           disabled = FALSE, line_numbers = FALSE, wrap = TRUE, read_only = FALSE,
                           language = NULL, tab_size = 4L, tab_behavior = "focus",
-                          auto_indent = FALSE, validate = NULL, max_history = 200L) {
+                          auto_indent = FALSE, validate = NULL, max_history = 200L, highlighter = NULL) {
       super$initialize(id = id, classes = classes, style = style, disabled = disabled)
       check_scalar_character(placeholder, "placeholder")
       check_flag(line_numbers)
@@ -50,6 +53,7 @@ TextArea <- R6::R6Class(
       check_flag(read_only)
       check_flag(auto_indent)
       check_function(validate, "validate", allow_null = TRUE)
+      check_function(highlighter, "highlighter", allow_null = TRUE)
       self$tab_behavior <- check_choice(tab_behavior, c("focus", "indent"), "tab_behavior")
       self$tab_size <- max(1L, check_count(tab_size, "tab_size"))
       self$placeholder <- placeholder
@@ -58,10 +62,12 @@ TextArea <- R6::R6Class(
       self$read_only <- read_only
       self$language <- language
       self$auto_indent <- auto_indent
+      self$highlighter <- highlighter
       self$validate <- validate
       private$.buf <- TextBuffer$new(value, self$tab_size)
       private$.undo <- UndoStack$new(max_entries = check_count(max_history, "max_history"))
       private$.wrap_cache <- new.env(parent = emptyenv())
+      private$.highlight_cache <- new.env(parent = emptyenv())
       initial <- list(
         cursor_row = 1L, cursor_col = 0L, anchor_row = NA_integer_, anchor_col = NA_integer_,
         top = 1L, sub = 0L, left = 0L
@@ -107,7 +113,9 @@ TextArea <- R6::R6Class(
         bind("ctrl+u", "delete_to_line_start"), bind("ctrl+k", "delete_to_line_end"),
         bind("ctrl+v", "paste"),
         bind("ctrl+z", "undo", "Undo"), bind("ctrl+y,ctrl+shift+z", "redo", "Redo"),
-        bind("ctrl+f", "open_find", "Find"), bind("f3", "find_next"), bind("shift+f3", "find_previous")
+        bind("ctrl+f", "open_find", "Find"), bind("ctrl+h", "open_replace", "Replace"),
+        bind("ctrl+g", "open_goto", "Go to line"),
+        bind("f3", "find_next"), bind("shift+f3", "find_previous")
       ), if (self$tab_behavior == "indent") list(bind("tab", "indent"), bind("shift+tab", "dedent")))
     },
 
@@ -119,6 +127,7 @@ TextArea <- R6::R6Class(
     #' @param event A `KeyEvent`.
     on_key = function(event) {
       if (!self$is_enabled()) return(invisible())
+      if (private$.goto_open) return(private$goto_key(event))
       if (private$.find_open) return(private$find_key(event))
       if (event$is_printable()) {
         self$insert(event$char)
@@ -135,8 +144,14 @@ TextArea <- R6::R6Class(
     #' @param event A `PasteEvent`.
     on_paste = function(event) {
       if (!self$is_enabled()) return(invisible())
-      if (private$.find_open) {
+      if (private$.find_open && !(private$.replace_open && private$.replace_target == "replacement")) {
         private$find_set(paste0(private$.find_text, gsub("\n", " ", event$text, fixed = TRUE)))
+      } else if (private$.goto_open) {
+        private$.goto_text <- paste0(private$.goto_text, gsub("[^0-9]", "", event$text))
+        self$invalidate_paint()
+      } else if (private$.replace_open && identical(private$.replace_target, "replacement")) {
+        private$.replace_text <- paste0(private$.replace_text, event$text)
+        self$invalidate_paint()
       } else {
         self$insert(event$text, kind = "paste")
       }
@@ -251,6 +266,16 @@ TextArea <- R6::R6Class(
       invisible(self)
     },
 
+    #' @description Cursor position. Columns count grapheme clusters and
+    #'   terminal display cells, both 1-based.
+    cursor_position = function() {
+      row <- private$.state$cursor_row
+      cells <- private$cells(row)$widths
+      column <- private$.state$cursor_col
+      list(line = row, grapheme_column = column + 1L,
+           display_column = sum(cells[seq_len(min(column, length(cells)))]) + 1L)
+    },
+
     #' @description Copy the selection to the app clipboard (and the system
     #'   clipboard via OSC 52 when `system = TRUE` and supported).
     #' @param system Also write to the system clipboard?
@@ -306,6 +331,62 @@ TextArea <- R6::R6Class(
 
     #' @description Select the previous match (wrapping around).
     find_previous = function() invisible(private$goto_match(-1L)),
+
+    #' @description Replace the current search match, or find `query` and
+    #'   replace its next match.
+    #' @param replacement Replacement text.
+    #' @param query Optional search text; defaults to the active search.
+    #' @param case_sensitive,regex Search options used when `query` is given.
+    replace = function(replacement, query = NULL, case_sensitive = FALSE, regex = FALSE) {
+      check_scalar_character(replacement, "replacement")
+      if (!is.null(query)) self$find(query, case_sensitive, regex)
+      sel <- private$selection_range()
+      if (is.null(sel)) return(invisible(FALSE))
+      if (!is.null(private$.find) && private$.find$regex) {
+        current <- private$.buf$slice(sel$start, sel$end)
+        replacement <- sub(private$.find$pattern, replacement, current, perl = TRUE,
+                           ignore.case = !private$.find$case_sensitive)
+      }
+      private$apply_edit(sel$start, sel$end, replacement, "paste", TRUE)
+      invisible(TRUE)
+    },
+
+    #' @description Replace all matches in one document edit. If the edit is
+    #'   larger than the bounded undo budget, it is applied without retaining
+    #'   an undo record.
+    #' @param query Search text or regular expression.
+    #' @param replacement Replacement text.
+    #' @param case_sensitive Match case?
+    #' @param regex Interpret `query` as a regular expression?
+    replace_all = function(query, replacement, case_sensitive = FALSE, regex = FALSE) {
+      check_scalar_character(replacement, "replacement")
+      q <- search_query(query, case_sensitive, regex)
+      lines <- private$.buf$lines
+      matches <- vapply(lines, function(line) nrow(query_line_matches(q, line)), 0L)
+      count <- sum(matches)
+      if (!count) return(invisible(0L))
+      changed <- lines
+      for (i in which(matches > 0L)) {
+        if (q$regex) {
+          changed[[i]] <- gsub(q$pattern, replacement, changed[[i]], perl = TRUE,
+                               ignore.case = !q$case_sensitive)
+        } else {
+          haystack <- if (q$case_sensitive) changed[[i]] else tolower(changed[[i]])
+          needle <- if (q$case_sensitive) q$pattern else tolower(q$pattern)
+          m <- gregexpr(needle, haystack, fixed = TRUE)[[1L]]
+          lens <- attr(m, "match.length")
+          for (k in rev(seq_along(m))) {
+            before <- if (m[[k]] <= 1L) "" else substr(changed[[i]], 1L, m[[k]] - 1L)
+            after_start <- m[[k]] + lens[[k]]
+            after <- if (after_start > nchar(changed[[i]])) "" else substr(changed[[i]], after_start, nchar(changed[[i]]))
+            changed[[i]] <- paste0(before, replacement, after)
+          }
+        }
+      }
+      end <- private$.buf$end_pos()
+      private$apply_edit(text_pos(1L, 0L), end, paste(changed, collapse = "\n"), "paste", TRUE)
+      invisible(count)
+    },
 
     #' @description Remove the search highlights and close the find bar.
     clear_find = function() {
@@ -468,12 +549,28 @@ TextArea <- R6::R6Class(
         private$find_set(private$.buf$slice(sel$start, sel$end), jump = FALSE)
       }
       private$.find_open <- TRUE
+      private$.goto_open <- FALSE
+      private$.replace_open <- FALSE
       self$invalidate_paint()
     },
     #' @description Select the next match (F3).
     action_find_next = function() self$find_next(),
     #' @description Select the previous match (Shift+F3).
     action_find_previous = function() self$find_previous(),
+
+    #' @description Open the find and replace bar (Ctrl+H).
+    action_open_replace = function() {
+      private$.replace_open <- TRUE
+      private$.replace_target <- "query"
+      private$.find_open <- TRUE
+      self$invalidate_paint()
+    },
+    #' @description Open the go-to-line bar (Ctrl+G).
+    action_open_goto = function() {
+      private$.goto_text <- ""
+      private$.goto_open <- TRUE
+      self$invalidate_paint()
+    },
 
     #' @description Natural width: the longest line (at most 120 columns).
     content_width = function() min(120L, max(c(1L, nchar(utils::head(private$.buf$lines, 1000L), type = "width")))) + 1L,
@@ -540,9 +637,15 @@ TextArea <- R6::R6Class(
     .find = NULL,
     .find_text = "",
     .find_open = FALSE,
+    .replace_open = FALSE,
+    .replace_target = "query",
+    .replace_text = "",
+    .goto_open = FALSE,
+    .goto_text = "",
     .find_error = NULL,
     .match_cache = NULL,
     .maxw_cache = NULL,
+    .highlight_cache = NULL,
 
     # Positions --------------------------------------------------------------
 
@@ -563,6 +666,29 @@ TextArea <- R6::R6Class(
     cells = function(row) {
       chars <- split_graphemes(private$.buf$lines[[row]])
       list(chars = chars, widths = if (!length(chars)) integer() else pmax(grapheme_width(chars), 1L))
+    },
+
+    highlight_spans = function(row) {
+      empty <- data.frame(start = integer(), end = integer(), token = character())
+      if (is.null(self$highlighter)) return(empty)
+      key <- paste(private$.buf$version, row, sep = ":")
+      if (exists(key, private$.highlight_cache, inherits = FALSE)) return(get(key, private$.highlight_cache))
+      raw <- self$highlighter(private$.buf$lines[[row]], state = list(language = self$language, line = row))
+      if (is.list(raw) && !is.data.frame(raw)) raw <- raw[[1L]]
+      if (is.null(raw)) raw <- empty
+      if (!is.data.frame(raw) || !all(c("start", "end", "token") %in% names(raw))) {
+        stop("A highlighter must return data frames with `start`, `end`, and `token` columns.", call. = FALSE)
+      }
+      raw <- raw[, c("start", "end", "token"), drop = FALSE]
+      if (nrow(raw) && (!is.numeric(raw$start) || !is.numeric(raw$end) || !is.character(raw$token) ||
+          anyNA(raw$start) || anyNA(raw$end) || anyNA(raw$token) || any(raw$start != floor(raw$start)) ||
+          any(raw$end != floor(raw$end)) || any(raw$start < 1L | raw$end < raw$start) ||
+          any(raw$end > length(split_graphemes(private$.buf$lines[[row]]))) ||
+          any(!raw$token %in% c("keyword", "string", "comment", "number", "constant", "operator", "function")))) {
+        stop("Highlighter spans must use valid grapheme ranges and known token names.", call. = FALSE)
+      }
+      assign(key, raw, private$.highlight_cache)
+      raw
     },
 
     word_class = function(ch) grepl("^[[:space:][:punct:]]$", ch),
@@ -704,7 +830,7 @@ TextArea <- R6::R6Class(
       if (rect_is_empty(inner)) return(NULL)
       n <- private$.buf$n_lines()
       gutter <- if (self$line_numbers) nchar(as.character(n)) + 1L else 0L
-      body_h <- inner$height - as.integer(private$.find_open)
+      body_h <- inner$height - as.integer(private$.find_open || private$.goto_open)
       bar_y <- n > body_h || private$.state$top > 1L
       text_w <- max(1L, inner$width - gutter - as.integer(bar_y))
       bar_x <- FALSE
@@ -973,6 +1099,7 @@ TextArea <- R6::R6Class(
     changed = function() {
       private$.follow <- TRUE
       private$.match_cache <- NULL
+      private$.highlight_cache <- new.env(parent = emptyenv())
       st <- private$.state
       st$top <- min(st$top, private$.buf$n_lines())
       error <- run_validator(self$validate, private$.buf$text())
@@ -1084,10 +1211,52 @@ TextArea <- R6::R6Class(
     .find_case = FALSE,
     .find_regex = FALSE,
 
+    goto_key = function(event) {
+      key <- event$key
+      if (key == "escape") {
+        private$.goto_open <- FALSE
+      } else if (key == "backspace") {
+        chars <- strsplit(private$.goto_text, "", fixed = TRUE)[[1]]
+        private$.goto_text <- paste(head(chars, -1L), collapse = "")
+      } else if (key == "enter") {
+        row <- suppressWarnings(as.integer(private$.goto_text))
+        if (!is.na(row) && row > 0L) self$goto_line(row)
+        private$.goto_open <- FALSE
+      } else if (event$is_printable() && grepl("^[0-9]$", event$char)) {
+        private$.goto_text <- paste0(private$.goto_text, event$char)
+      } else {
+        return(invisible())
+      }
+      self$invalidate_paint()
+      event$stop()
+    },
+
     find_key = function(event) {
       key <- event$key
       if (key == "escape") {
         private$.find_open <- FALSE
+        private$.replace_open <- FALSE
+        self$invalidate_paint()
+      } else if (key == "tab" && private$.replace_open) {
+        private$.replace_target <- if (private$.replace_target == "query") "replacement" else "query"
+        self$invalidate_paint()
+      } else if (key == "alt+r") {
+        private$.replace_open <- !private$.replace_open
+        private$.replace_target <- "query"
+        self$invalidate_paint()
+      } else if (key == "ctrl+enter" && private$.replace_open) {
+        tryCatch(self$replace_all(private$.find_text, private$.replace_text,
+                                  isTRUE(private$.find_case), isTRUE(private$.find_regex)),
+                 error = function(e) private$.find_error <- conditionMessage(e))
+        private$.find_open <- FALSE
+        private$.replace_open <- FALSE
+        self$invalidate_paint()
+      } else if (key == "enter" && private$.replace_open && private$.replace_target == "replacement") {
+        self$replace(private$.replace_text)
+        private$goto_match(1L)
+      } else if (key == "backspace" && private$.replace_open && private$.replace_target == "replacement") {
+        chars <- split_graphemes(private$.replace_text)
+        private$.replace_text <- paste(chars[-length(chars)], collapse = "")
         self$invalidate_paint()
       } else if (key %in% c("enter", "down", "f3")) {
         self$find_next()
@@ -1102,6 +1271,9 @@ TextArea <- R6::R6Class(
       } else if (key == "alt+c") {
         private$.find_case <- !isTRUE(private$.find_case)
         private$find_set(private$.find_text)
+      } else if (event$is_printable() && private$.replace_open && private$.replace_target == "replacement") {
+        private$.replace_text <- paste0(private$.replace_text, event$char)
+        self$invalidate_paint()
       } else if (event$is_printable()) {
         private$find_set(paste0(private$.find_text, event$char))
       } else {
@@ -1124,6 +1296,13 @@ TextArea <- R6::R6Class(
         selected = resolve_style(style(background = "$primary", foreground = "$on_primary"), parent = st),
         match = resolve_style(style(background = "$warning", foreground = "$background", underline = TRUE), parent = st),
         cursor = resolve_style(style(reverse = TRUE), parent = st),
+        syntax_keyword = resolve_style(style(foreground = "blue", bold = TRUE), parent = st),
+        syntax_string = resolve_style(style(foreground = "green"), parent = st),
+        syntax_comment = resolve_style(style(foreground = "$muted", italic = TRUE), parent = st),
+        syntax_number = resolve_style(style(foreground = "cyan"), parent = st),
+        syntax_constant = resolve_style(style(foreground = "magenta", bold = TRUE), parent = st),
+        syntax_operator = resolve_style(style(foreground = "yellow"), parent = st),
+        syntax_function = resolve_style(style(foreground = "cyan", bold = TRUE), parent = st),
         placeholder = resolve_style(style(foreground = "$muted", italic = TRUE), parent = st)
       )
       x0 <- g$inner$x + g$gutter
@@ -1150,7 +1329,8 @@ TextArea <- R6::R6Class(
         private$paint_row(buffer, x0, y, g, r, state, sel, query, focused, styles, st, text_clip)
       }
       private$paint_bars(buffer, g, st, clip, rows)
-      if (private$.find_open) private$paint_find_bar(buffer, g, st, clip)
+      if (private$.goto_open) private$paint_goto_bar(buffer, g, st, clip)
+      else if (private$.find_open) private$paint_find_bar(buffer, g, st, clip)
       invisible()
     },
 
@@ -1165,6 +1345,10 @@ TextArea <- R6::R6Class(
       if (to >= from) {
         idx <- from:to
         kinds <- rep("plain", length(idx))
+        spans <- private$highlight_spans(row)
+        if (nrow(spans)) for (i in seq_len(nrow(spans))) {
+          kinds[idx >= spans$start[[i]] & idx <= spans$end[[i]]] <- paste0("syntax_", spans$token[[i]])
+        }
         if (!is.null(sel) && row >= sel$start[["row"]] && row <= sel$end[["row"]]) {
           s <- if (row == sel$start[["row"]]) sel$start[["col"]] else 0L
           e <- if (row == sel$end[["row"]]) sel$end[["col"]] else n
@@ -1249,13 +1433,23 @@ TextArea <- R6::R6Class(
         count <- private$count_matches()
         if (count == 0L) "no matches" else paste0(count, if (count == 1L) " match" else " matches")
       }
-      left <- paste0(" Find: ", private$.find_text, "_")
+      left <- if (private$.replace_open) {
+        paste0(if (private$.replace_target == "query") " Find: " else " Replace: ",
+               if (private$.replace_target == "query") private$.find_text else private$.replace_text, "_")
+      } else paste0(" Find: ", private$.find_text, "_")
       right <- paste0(flags, status, " ")
       room <- max(0L, width - str_width(right))
       line <- paste0(str_align(left, room), str_truncate(right, width))
       sty <- if (!is.null(private$.find_error) || (nzchar(private$.find_text) && private$count_matches() == 0L)) err else bar
       buffer$put_text(g$inner$x, g$bar_row, str_align(line, width), fg = sty$foreground, bg = sty$background,
                       attrs = sty$attrs, clip = clip)
+    },
+
+    paint_goto_bar = function(buffer, g, st, clip) {
+      bar <- resolve_style(style(background = "$surface", foreground = "$foreground"), parent = st)
+      text <- paste0(" Go to line (1-", private$.buf$n_lines(), "): ", private$.goto_text, "_")
+      buffer$put_text(g$inner$x, g$bar_row, str_align(str_truncate(text, g$inner$width), g$inner$width),
+                      fg = bar$foreground, bg = bar$background, attrs = bar$attrs, clip = clip)
     }
   )
 )
@@ -1327,17 +1521,20 @@ editor_wrap_starts <- function(chars, widths, width) {
 #' @param line_numbers Show line numbers?
 #' @param wrap Wrap long lines? If `FALSE` the view scrolls horizontally.
 #' @param read_only Block editing?
-#' @param language Reserved for syntax highlighting (ignored for now).
+#' @param language Optional language label supplied to the highlighter.
 #' @param tab_size Spaces per tab stop.
 #' @param tab_behavior `"focus"` (Tab moves focus) or `"indent"`.
 #' @param auto_indent Keep the indentation on Enter?
 #' @param validate Optional `function(value)` returning `NULL`/`TRUE` when
 #'   valid or a message.
 #' @param max_history Maximum number of undo steps.
+#' @param highlighter Optional viewport-first syntax highlighter; see
+#'   `r_highlighter()`.
 #' @return A `TextArea` widget. Useful members: `$value`, `$set_text()`,
 #'   `$insert()`, `$selection`, `$cursor_row`, `$cursor_column`,
-#'   `$goto_line()`, `$undo()`, `$redo()`, `$find()`, `$find_next()`,
-#'   `$find_previous()`, `$match_count`.
+#'   `$goto_line()`, `$cursor_position()`, `$undo()`, `$redo()`, `$find()`,
+#'   `$replace()`, `$replace_all()`, `$find_next()`, `$find_previous()`,
+#'   `$match_count`.
 #' @export
 #' @examples
 #' ed <- text_area("Hello\nworld", id = "editor", line_numbers = TRUE)
@@ -1348,9 +1545,53 @@ editor_wrap_starts <- function(chars, widths, width) {
 text_area <- function(value = "", placeholder = "", id = NULL, classes = NULL, style = NULL,
                       disabled = FALSE, line_numbers = FALSE, wrap = TRUE, read_only = FALSE,
                       language = NULL, tab_size = 4L, tab_behavior = "focus", auto_indent = FALSE,
-                      validate = NULL, max_history = 200L) {
+                      validate = NULL, max_history = 200L, highlighter = NULL) {
   TextArea$new(value, placeholder = placeholder, id = id, classes = classes, style = style,
                disabled = disabled, line_numbers = line_numbers, wrap = wrap, read_only = read_only,
                language = language, tab_size = tab_size, tab_behavior = tab_behavior,
-               auto_indent = auto_indent, validate = validate, max_history = max_history)
+               auto_indent = auto_indent, validate = validate, max_history = max_history,
+               highlighter = highlighter)
+}
+
+#' Lightweight R syntax highlighter
+#'
+#' Returns a viewport-first tokenizer for [text_area()]. It highlights common
+#' R keywords, strings, comments, numeric constants, operators, and function
+#' names. It uses tolerant regular expressions and accepts incomplete syntax.
+#' Each line produces grapheme-indexed spans with `start`, `end`, and `token`.
+#' @return A function `(lines, state = NULL)` suitable for `text_area()`.
+#' @export
+r_highlighter <- function() {
+  pattern <- paste0(
+    '"(?:\\\\.|[^"\\\\])*"?', "|", "'(?:\\\\.|[^'\\\\])*'?", "|",
+    "`[^`]*`|#[^\\n]*|\\b(?:if|else|repeat|while|function|for|in|next|break)\\b|",
+    "\\b(?:TRUE|FALSE|NULL|NA|NA_integer_|NA_real_|NA_character_|Inf|NaN)\\b|",
+    "\\b[0-9]+(?:\\.[0-9]*)?(?:[eE][+-]?[0-9]+)?[L]?\\b|",
+    "[A-Za-z.][A-Za-z0-9._]*(?=\\s*\\()|<<-|<-|->>|->|==|!=|<=|>=|&&|\\|\\||[+*/^~:$@=<>!&|%-]"
+  )
+  function(lines, state = NULL) {
+    lapply(lines, function(line) {
+      match <- gregexpr(pattern, line, perl = TRUE)[[1L]]
+      if (match[[1L]] < 0L) return(data.frame(start = integer(), end = integer(), token = character()))
+      text <- regmatches(line, list(match))[[1L]]
+      lens <- attr(match, "match.length")
+      token <- vapply(text, function(value) {
+        if (startsWith(value, "#")) "comment"
+        else if (startsWith(value, "\"") || startsWith(value, "'") || startsWith(value, "`")) "string"
+        else if (grepl("^(if|else|repeat|while|function|for|in|next|break)$", value)) "keyword"
+        else if (grepl("^(TRUE|FALSE|NULL|NA|NA_integer_|NA_real_|NA_character_|Inf|NaN)$", value)) "constant"
+        else if (grepl("^[0-9]", value)) "number"
+        else if (grepl("^[A-Za-z.]", value)) "function"
+        else "operator"
+      }, "")
+      start <- as.integer(match)
+      end <- start + as.integer(lens) - 1L
+      if (!is_ascii(line)) {
+        cumulative <- cumsum(nchar(split_graphemes(line), type = "chars"))
+        start <- findInterval(start - 1L, cumulative) + 1L
+        end <- findInterval(end - 1L, cumulative) + 1L
+      }
+      data.frame(start = as.integer(start), end = as.integer(end), token = token)
+    })
+  }
 }

@@ -27,8 +27,9 @@ demo_text <- paste(c(
 status <- function(app) {
   ed <- app$query_one("#editor")
   sel <- nchar(ed$selection)
+  position <- ed$cursor_position()
   app$query_one("#position")$update(sprintf(
-    "Ln %d, Col %d%s   %d lines%s", ed$cursor_row, ed$cursor_column,
+    "Ln %d, Col %d%s   %d lines%s", position$line, position$display_column,
     if (sel) sprintf("   (%d selected)", sel) else "", ed$n_lines,
     if (ed$can_undo) "   modified" else ""
   ))
@@ -44,15 +45,6 @@ editor <- app(
   ),
   title = "Editor",
   bind("ctrl+q", "quit", "Quit"),
-  bind("ctrl+g", function(app) {
-    app$push_screen(modal(
-      label("Line number:"), input(id = "goto"), title = "Go to line", width = 30
-    ), callback = function(result, app) {
-      n <- suppressWarnings(as.integer(result))
-      if (!is.na(n)) app$query_one("#editor")$goto_line(n)
-    })
-  }, "Go to line"),
-  on("input.submitted", "#goto", function(event, app) app$screen$dismiss(event$data$value)),
   on("textarea.changed", function(event, app) status(app)),
   on("textarea.selection_changed", function(event, app) status(app))
 )

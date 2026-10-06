@@ -23,7 +23,7 @@ A multi-line text editor. See \code{\link[=text_area]{text_area()}}.
     \item{\code{read_only}}{Block editing (cursor, selection, copy and search
 still work)?}
 
-    \item{\code{language}}{Reserved for syntax highlighting; not used yet.}
+    \item{\code{language}}{Optional language name passed to the configured highlighter.}
 
     \item{\code{tab_size}}{Spaces inserted by Tab (and used for tabs in loaded
 text).}
@@ -32,6 +32,9 @@ text).}
 forms); \code{"indent"}: Tab inserts spaces and Shift+Tab removes them.}
 
     \item{\code{auto_indent}}{Copy the indentation of the current line on Enter?}
+
+    \item{\code{highlighter}}{Optional function \verb{(lines, state)} returning a list
+of per-line data frames with 1-based inclusive \code{start}, \code{end}, \code{token}.}
 
     \item{\code{validate}}{\code{NULL} or \verb{function(value)} returning \code{NULL} (valid)
 or an error message.}
@@ -85,6 +88,7 @@ before the first character).}
     \item \href{#method-TextArea-insert}{\code{TextArea$insert()}}
     \item \href{#method-TextArea-select_range}{\code{TextArea$select_range()}}
     \item \href{#method-TextArea-goto_line}{\code{TextArea$goto_line()}}
+    \item \href{#method-TextArea-cursor_position}{\code{TextArea$cursor_position()}}
     \item \href{#method-TextArea-copy}{\code{TextArea$copy()}}
     \item \href{#method-TextArea-cut}{\code{TextArea$cut()}}
     \item \href{#method-TextArea-undo}{\code{TextArea$undo()}}
@@ -92,6 +96,8 @@ before the first character).}
     \item \href{#method-TextArea-find}{\code{TextArea$find()}}
     \item \href{#method-TextArea-find_next}{\code{TextArea$find_next()}}
     \item \href{#method-TextArea-find_previous}{\code{TextArea$find_previous()}}
+    \item \href{#method-TextArea-replace}{\code{TextArea$replace()}}
+    \item \href{#method-TextArea-replace_all}{\code{TextArea$replace_all()}}
     \item \href{#method-TextArea-clear_find}{\code{TextArea$clear_find()}}
     \item \href{#method-TextArea-action_cursor_left}{\code{TextArea$action_cursor_left()}}
     \item \href{#method-TextArea-action_cursor_right}{\code{TextArea$action_cursor_right()}}
@@ -133,6 +139,8 @@ before the first character).}
     \item \href{#method-TextArea-action_open_find}{\code{TextArea$action_open_find()}}
     \item \href{#method-TextArea-action_find_next}{\code{TextArea$action_find_next()}}
     \item \href{#method-TextArea-action_find_previous}{\code{TextArea$action_find_previous()}}
+    \item \href{#method-TextArea-action_open_replace}{\code{TextArea$action_open_replace()}}
+    \item \href{#method-TextArea-action_open_goto}{\code{TextArea$action_open_goto()}}
     \item \href{#method-TextArea-content_width}{\code{TextArea$content_width()}}
     \item \href{#method-TextArea-content_height}{\code{TextArea$content_height()}}
     \item \href{#method-TextArea-paint}{\code{TextArea$paint()}}
@@ -177,7 +185,6 @@ before the first character).}
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="remove_class"><a href='../../termr/html/Widget.html#method-Widget-remove_class'><code>Widget$remove_class()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="render"><a href='../../termr/html/Widget.html#method-Widget-render'><code>Widget$render()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="render_lines"><a href='../../termr/html/Widget.html#method-Widget-render_lines'><code>Widget$render_lines()</code></a></span></li>
-  <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="replace"><a href='../../termr/html/Widget.html#method-Widget-replace'><code>Widget$replace()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="run_action"><a href='../../termr/html/Widget.html#method-Widget-run_action'><code>Widget$run_action()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="run_process"><a href='../../termr/html/Widget.html#method-Widget-run_process'><code>Widget$run_process()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="run_worker"><a href='../../termr/html/Widget.html#method-Widget-run_worker'><code>Widget$run_worker()</code></a></span></li>
@@ -211,7 +218,8 @@ before the first character).}
   tab_behavior = "focus",
   auto_indent = FALSE,
   validate = NULL,
-  max_history = 200L
+  max_history = 200L,
+  highlighter = NULL
 )}
     \if{html}{\out{</div>}}
   }
@@ -224,6 +232,8 @@ before the first character).}
       \item{\code{line_numbers, wrap, read_only, language, tab_size, tab_behavior, auto_indent}}{See the fields.}
       \item{\code{validate}}{Validation function.}
       \item{\code{max_history}}{Maximum number of undo steps.}
+      \item{\code{highlighter}}{Optional function \verb{(lines, state)} returning a list
+of per-line data frames with 1-based inclusive \code{start}, \code{end}, \code{token}.}
     }
     \if{html}{\out{</div>}}
   }
@@ -465,6 +475,19 @@ before the first character).
 }
 
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-TextArea-cursor_position"></a>}}
+\if{latex}{\out{\hypertarget{method-TextArea-cursor_position}{}}}
+\subsection{\code{TextArea$cursor_position()}}{
+  Cursor position. Columns count grapheme clusters and
+terminal display cells, both 1-based.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{TextArea$cursor_position()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-TextArea-copy"></a>}}
 \if{latex}{\out{\hypertarget{method-TextArea-copy}{}}}
 \subsection{\code{TextArea$copy()}}{
@@ -573,6 +596,57 @@ raise an error.}
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{TextArea$find_previous()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-TextArea-replace"></a>}}
+\if{latex}{\out{\hypertarget{method-TextArea-replace}{}}}
+\subsection{\code{TextArea$replace()}}{
+  Replace the current search match, or find \code{query} and
+replace its next match.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{TextArea$replace(
+  replacement,
+  query = NULL,
+  case_sensitive = FALSE,
+  regex = FALSE
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{replacement}}{Replacement text.}
+      \item{\code{query}}{Optional search text; defaults to the active search.}
+      \item{\code{case_sensitive, regex}}{Search options used when \code{query} is given.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-TextArea-replace_all"></a>}}
+\if{latex}{\out{\hypertarget{method-TextArea-replace_all}{}}}
+\subsection{\code{TextArea$replace_all()}}{
+  Replace all matches in one document edit. If the edit is
+larger than the bounded undo budget, it is applied without retaining
+an undo record.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{TextArea$replace_all(query, replacement, case_sensitive = FALSE, regex = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{query}}{Search text or regular expression.}
+      \item{\code{replacement}}{Replacement text.}
+      \item{\code{case_sensitive}}{Match case?}
+      \item{\code{regex}}{Interpret \code{query} as a regular expression?}
+    }
     \if{html}{\out{</div>}}
   }
 }
@@ -1068,6 +1142,30 @@ selected lines).
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{TextArea$action_find_previous()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-TextArea-action_open_replace"></a>}}
+\if{latex}{\out{\hypertarget{method-TextArea-action_open_replace}{}}}
+\subsection{\code{TextArea$action_open_replace()}}{
+  Open the find and replace bar (Ctrl+H).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{TextArea$action_open_replace()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-TextArea-action_open_goto"></a>}}
+\if{latex}{\out{\hypertarget{method-TextArea-action_open_goto}{}}}
+\subsection{\code{TextArea$action_open_goto()}}{
+  Open the go-to-line bar (Ctrl+G).
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{TextArea$action_open_goto()}
     \if{html}{\out{</div>}}
   }
 }
