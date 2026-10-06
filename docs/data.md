@@ -64,6 +64,9 @@ Use `app$set_interval()` to refresh, `sparkline$push()` for streams,
   scans a huge table unless `rows = "all"`), `auto_size_all()`,
   `set_column_visible(col, FALSE)`, `column_info()`. Drag the separator
   between header cells, or Alt+Left/Right, to resize the active column.
+  `reorder_column(col, to)` changes display order; drag a header or press
+  Ctrl+Alt+Left/Right to move the active column. Data-frame column order is
+  unchanged. `column_info()` includes both source and display positions.
 * **Frozen columns.** `data_table(df, frozen_columns = 1)`: the first columns
   and the header stay while the rest scrolls; a bar marks the boundary.
 * **Sorting.** `sort(c("a", "b"), decreasing = c(FALSE, TRUE))` sorts by
@@ -74,6 +77,17 @@ Use `app$set_interval()` to refresh, `sparkline$push()` for streams,
   the active one with Tab; Ctrl+R regex, Alt+C case); `find(query, column,
   case_sensitive, regex)`, `find_next()`, `find_previous()`, `match_hit`. Large
   tables are scanned in chunks. `goto_row(n)` and Ctrl+G jump to a row.
+* **Selection and copy.** Shift+Up/Down extends a row range; Shift+drag does
+  the same with the mouse. `select_range(from, to)`, `selected_data()` and
+  `visible_data()` expose selected and viewport rows. Ctrl+C copies selected
+  rows as TSV with visible headers; `copy_selection(headers = FALSE)` omits
+  them. System clipboard output follows the terminal's OSC 52 capability.
+* **Filters.** `filter_columns(list(score = table_filter("range", min = 10,
+  max = 20), name = table_filter("contains", "r")))` combines column filters
+  with AND. Supported types are `equals`, `contains`, `regex`, `range`, and
+  `missing`; callers can also pass `function(values) logical`. Predicates run
+  in chunks of 5,000 rows. Existing `filter(rows)` subsets compose with the
+  column filters.
 * **Editing (experimental).** `data_table(df, editable = TRUE, on_edit =
   function(row, column, value) ...)`: Enter or double click opens a small
   dialog; the table edits *its own copy* of the data (`$data`), converts text to
