@@ -98,7 +98,7 @@ hit_test <- function(widget, x, y, clip = NULL, inherited = NULL) {
   if (rect_is_empty(area) || !rect_contains(area, x, y)) return(NULL)
   st <- widget$computed_style(inherited)
   inner <- rect_intersect(widget$child_clip(st), clip)
-  kids <- widget$children
+  kids <- render_children(widget)
   for (child in rev(kids)) {
     hit <- hit_test(child, x, y, inner, st)
     if (!is.null(hit)) return(hit)
@@ -128,8 +128,17 @@ sgr_mouse_event <- function(params, final) {
 
 # Turn a Windows MOUSE_EVENT_RECORD into MouseEvents. `previous` is the
 # button state of the last record; presses and releases are derived from
-# the change. Coordinates are 1-based screen positions.
+# the change. Coordinates are 1-based screen positions. `buttons` and
+# `flags` are unsigned DWORDs represented as doubles, not R integers.
+signed_high_word <- function(x) {
+  hi <- floor(x / 65536) %% 65536
+  if (hi >= 32768) hi <- hi - 65536
+  hi
+}
+
 windows_mouse_events <- function(x, y, buttons, flags, mods, previous) {
+  # R bitw* coerces to signed integers; reduce DWORDs to safe low words.
+  flags <- flags %% 65536
   alt <- bitwAnd(mods, 1L) > 0L
   shift <- bitwAnd(mods, 2L) > 0L
   ctrl <- bitwAnd(mods, 4L) > 0L
@@ -137,13 +146,13 @@ windows_mouse_events <- function(x, y, buttons, flags, mods, previous) {
     MouseEvent$new(action, x, y, button = button, direction = direction, shift = shift, ctrl = ctrl, alt = alt)
   }
   if (bitwAnd(flags, 4L) > 0L || bitwAnd(flags, 8L) > 0L) {
-    delta <- bitwShiftR(buttons, 16L)
-    if (delta >= 32768L) delta <- delta - 65536L
+    delta <- signed_high_word(buttons)
     vertical <- bitwAnd(flags, 4L) > 0L
     direction <- if (vertical) (if (delta > 0L) "up" else "down") else (if (delta > 0L) "right" else "left")
     return(list(make("scroll", direction = direction)))
   }
-  buttons <- bitwAnd(buttons, 0xFFFFL)
+  buttons <- buttons %% 65536
+  previous <- previous %% 65536
   names <- c("left", "right", "middle")
   bits <- c(1L, 2L, 4L)
   out <- list()

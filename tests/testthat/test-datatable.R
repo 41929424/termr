@@ -181,6 +181,65 @@ test_that("column options, formatters and style hooks", {
   expect_error(data_table(small, formatters = list(score = function(x) 1)) |> render_widget(30, 4), "must return one string")
 })
 
+test_that("column order is independent of data order and supports visibility", {
+  tbl <- data_table(small, row_names = FALSE)
+  tbl$reorder_column("ok", 1L)
+  expect_identical(tbl$column_info()$name, names(small))
+  expect_match(render_widget(tbl, 40, 4)$to_text()[[1]], "^ok +name")
+  tbl$set_column_visible("score", FALSE)
+  expect_identical(names(tbl$visible_data()), c("ok", "name", "n"))
+  expect_error(tbl$reorder_column("name", 99), "valid 1-based")
+  tbl$set_column_visible("ok", FALSE)
+  tbl$set_column_visible("name", FALSE)
+  expect_error(tbl$set_column_visible("n", FALSE), "at least one visible")
+})
+
+test_that("range selection, selected and visible data, and TSV copy", {
+  tbl <- data_table(small, row_names = FALSE)
+  pilot <- test_app(app(tbl), 40, 4)
+  pilot$press("shift+down")
+  expect_identical(tbl$selected_data()$name, c("alpha", "beta"))
+  expect_identical(tbl$visible_data()$name, c("alpha", "beta", "gamma"))
+  tbl$filter(c(TRUE, FALSE, TRUE, TRUE))
+  tbl$select_range(2, 3)
+  expect_identical(tbl$selected_data()$name, c("gamma", "delta"))
+  tbl$copy_selection(system = FALSE)
+  expect_identical(pilot$app$clipboard, paste(
+    "name\tscore\tn\tok", "gamma\tNA\t300\tTRUE", "delta\t4\tNA\tNA", sep = "\n"
+  ))
+  tbl$copy_selection(headers = FALSE, system = FALSE)
+  expect_identical(pilot$app$clipboard, "gamma\tNA\t300\tTRUE\ndelta\t4\tNA\tNA")
+  expect_error(tbl$select_range(0), "between 1 and")
+})
+
+test_that("columns can be reordered from the keyboard", {
+  tbl <- data_table(small, row_names = FALSE)
+  pilot <- test_app(app(tbl), 40, 4)
+  pilot$press("ctrl+alt+right")
+  expect_match(pilot$screen_text()[[1]], "^score +name")
+})
+
+test_that("column filters combine with AND and process bounded row chunks", {
+  n <- 10001L
+  df <- data.frame(id = seq_len(n), label = paste0("row-", seq_len(n)),
+                   score = seq_len(n) %% 101, stringsAsFactors = FALSE)
+  sizes <- integer()
+  tbl <- data_table(df)
+  tbl$filter_columns(list(
+    label = table_filter("contains", "ROW-1"),
+    score = table_filter("range", min = 20, max = 30),
+    id = function(x) { sizes <<- c(sizes, length(x)); x %% 2L == 0L }
+  ))
+  expected <- which(grepl("row-1", df$label, fixed = TRUE) & df$score >= 20 & df$score <= 30 & df$id %% 2L == 0L)
+  expect_identical(tbl$view, expected)
+  expect_lte(max(sizes), 5000L)
+  tbl$filter_columns(list(score = table_filter("regex", "^2[0-9]$")))
+  expect_identical(tbl$view, which(grepl("^2[0-9]$", as.character(df$score))))
+  tbl$filter_columns(NULL)
+  expect_identical(tbl$row_count, n)
+  expect_error(tbl$filter_columns(list(score = function(x) TRUE)), "one logical per value")
+})
+
 test_that("matrices, empty tables and replacing data", {
   m <- matrix(1:6, nrow = 2)
   buf <- render_widget(data_table(m), 20, 3)

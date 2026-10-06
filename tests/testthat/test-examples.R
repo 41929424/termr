@@ -3,7 +3,7 @@
 test_that("all examples are listed", {
   expect_setequal(run_example(), c("buffer-demo", "counter", "dataframe-browser", "file-tree", "form", "hello",
                                    "keys", "kitchen-sink", "model-monitor", "system-monitor", "data-explorer",
-                                   "task-runner", "terminal-dashboard", "editor", "accessibility-demo"))
+                                   "task-runner", "terminal-dashboard", "editor", "accessibility-demo", "custom-widget"))
   expect_error(run_example("nope"), "Unknown example")
 })
 

@@ -1,10 +1,28 @@
 # Driver for Unix terminals.
 #
-# Raw mode is set with `stty` on /dev/tty and restored from the saved
-# `stty -g` state on exit. Key input is read by a `cat` child process whose
-# stdin is /dev/tty; R polls its stdout with a timeout (processx), so the
-# event loop never blocks longer than needed for the next timer. The
-# terminal size is polled with `stty size`.
+# Raw mode is set with `stty` and restored from the saved state on exit.
+# Key input is read by a `cat` child process; R polls its stdout with a
+# timeout (processx), so the event loop never blocks longer than needed for
+# the next timer. `/dev/tty` is preferred, with a TTY stdin fallback for
+# sessions that have no controlling terminal.
+
+posix_path_is_openable <- function(path) {
+  con <- suppressWarnings(tryCatch(file(path, open = "rb"), error = function(e) NULL))
+  if (is.null(con)) return(FALSE)
+  on.exit(close(con), add = TRUE)
+  isOpen(con)
+}
+
+posix_stdin_is_tty <- function() {
+  identical(suppressWarnings(system("test -t 0", ignore.stdout = TRUE, ignore.stderr = TRUE)), 0L)
+}
+
+posix_select_terminal_path <- function(tty_available = posix_path_is_openable("/dev/tty"),
+                                       stdin_is_tty = posix_stdin_is_tty()) {
+  if (isTRUE(tty_available)) return("/dev/tty")
+  if (isTRUE(stdin_is_tty)) return("/dev/stdin")
+  stop("termr needs an interactive terminal: /dev/tty is unavailable and stdin is not a TTY.", call. = FALSE)
+}
 
 PosixDriver <- R6::R6Class(
   "PosixDriver",
@@ -20,10 +38,8 @@ PosixDriver <- R6::R6Class(
 
     start = function() {
       if (self$started) return(invisible(self))
-      if (!file.exists("/dev/tty")) {
-        stop("Cannot open /dev/tty: termr needs an interactive terminal.", call. = FALSE)
-      }
-      saved <- suppressWarnings(system("stty -g < /dev/tty 2>/dev/null", intern = TRUE))
+      private$terminal_path <- posix_select_terminal_path()
+      saved <- suppressWarnings(system(paste("stty -g <", shQuote(private$terminal_path), "2>/dev/null"), intern = TRUE))
       if (length(saved) != 1L || !nzchar(saved) || !is.null(attr(saved, "status"))) {
         stop("Cannot read the terminal settings with `stty`.", call. = FALSE)
       }
@@ -31,9 +47,27 @@ PosixDriver <- R6::R6Class(
       # From here on, stop() must run to restore the terminal.
       self$started <- TRUE
       private$stty("raw -echo")
-      private$reader <- process$new(
-        "cat", stdin = "/dev/tty", stdout = "|", stderr = NULL,
-        cleanup = TRUE, cleanup_tree = TRUE
+      private$reader <- tryCatch(
+        process$new("cat", stdin = private$terminal_path, stdout = "|", stderr = NULL,
+                    cleanup = TRUE, cleanup_tree = TRUE),
+        error = function(e) {
+          # Some process supervisors detach their children from the
+          # controlling-terminal session. In that case /dev/tty cannot be
+          # reopened by cat, although the parent's stdin still refers to a
+          # TTY. Pass that already-attached device through instead.
+          if (private$terminal_path == "/dev/tty" && posix_stdin_is_tty()) {
+            tryCatch(
+              process$new("cat", stdin = "/dev/stdin", stdout = "|", stderr = NULL,
+                          cleanup = TRUE, cleanup_tree = TRUE),
+              error = function(fallback_error) {
+                stop("Cannot start the terminal input reader: /dev/tty could not be reopened and the stdin TTY fallback failed: ",
+                     conditionMessage(fallback_error), call. = FALSE)
+              }
+            )
+          } else {
+            stop("Cannot start the terminal input reader: ", conditionMessage(e), call. = FALSE)
+          }
+        }
       )
       private$last_size <- self$query_size()
       private$last_size_check <- now_seconds()
@@ -56,7 +90,7 @@ PosixDriver <- R6::R6Class(
     size = function() private$last_size %||% self$query_size(),
 
     query_size = function() {
-      out <- suppressWarnings(system("stty size < /dev/tty 2>/dev/null", intern = TRUE))
+      out <- suppressWarnings(system(paste("stty size <", shQuote(private$terminal_path), "2>/dev/null"), intern = TRUE))
       nums <- suppressWarnings(as.integer(strsplit(trimws(out[1]), "[[:space:]]+")[[1]]))
       if (length(nums) == 2L && !anyNA(nums) && all(nums > 0L)) {
         return(c(width = nums[[2]], height = nums[[1]]))
@@ -96,11 +130,12 @@ PosixDriver <- R6::R6Class(
     saved_stty = NULL,
     reader = NULL,
     parser = NULL,
+    terminal_path = NULL,
     last_size = NULL,
     last_size_check = 0,
 
     stty = function(args) {
-      status <- system(paste("stty", args, "< /dev/tty"))
+      status <- system(paste("stty", args, "<", shQuote(private$terminal_path)))
       if (status != 0L) stop("`stty ", args, "` failed.", call. = FALSE)
     }
   )

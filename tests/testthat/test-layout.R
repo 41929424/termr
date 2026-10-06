@@ -84,3 +84,20 @@ test_that("auto sizes of nested containers are measured from children", {
   expect_identical(natural_width(col), 6L)
   expect_identical(natural_height(col, 6L), 4L)
 })
+
+test_that("custom layout registration is namespaced and removable", {
+  arrange <- function(children, inner, parent_style) {
+    lapply(seq_along(children), function(i) region(inner$x, inner$y + i - 1L, inner$width, 1L))
+  }
+  measure <- function(children, parent_style) list(width = function() 4L, height = function(width) length(children))
+  expect_error(register_layout("vertical", arrange, measure), "custom_")
+  register_layout("custom_stack", arrange, measure)
+  on.exit(unregister_layout("custom_stack"), add = TRUE)
+  expect_error(register_layout("custom_stack", arrange, measure), "already registered")
+  root <- vertical(label("a"), label("b"), style = style(layout = "custom_stack"))
+  buf <- render_widget(root, 8, 3)
+  expect_match(buf$to_text()[[1]], "a")
+  expect_match(buf$to_text()[[2]], "b")
+  expect_true(unregister_layout("custom_stack"))
+  expect_error(style(layout = "custom_stack"), "must be one of")
+})

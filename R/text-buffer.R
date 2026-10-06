@@ -163,6 +163,12 @@ UndoStack <- R6::R6Class(
 
     push = function(edit) {
       edit$size <- sum(nchar(edit$old, "chars")) + sum(nchar(edit$new, "chars"))
+      if (edit$size > self$max_chars) {
+        private$undo_stack <- list()
+        private$redo_stack <- list()
+        private$open <- FALSE
+        return(invisible(self))
+      }
       n <- length(private$undo_stack)
       if (private$open && n > 0L && private$mergeable(private$undo_stack[[n]], edit)) {
         last <- private$undo_stack[[n]]
@@ -238,7 +244,7 @@ UndoStack <- R6::R6Class(
 
     trim = function() {
       while (length(private$undo_stack) > self$max_entries ||
-             (length(private$undo_stack) > 1L && self$size() > self$max_chars)) {
+             (length(private$undo_stack) > 0L && self$size() > self$max_chars)) {
         private$undo_stack[[1L]] <- NULL
       }
       invisible()

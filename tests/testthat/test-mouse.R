@@ -20,9 +20,9 @@ test_that("Windows mouse records become press, release, move and wheel events", 
   expect_true(up[[1]]$shift)
   move <- windows_mouse_events(6L, 3L, 1L, 1L, 0L, previous = 1L)
   expect_identical(mouse_keys(move), "mouse.move left 6 3 NA")
-  wheel_up <- windows_mouse_events(1L, 1L, 8388608L, 4L, 0L, previous = 0L)
+  wheel_up <- windows_mouse_events(1L, 1L, 7864320, 4L, 0L, previous = 0L)
   expect_identical(wheel_up[[1]]$direction, "up")
-  wheel_down <- windows_mouse_events(1L, 1L, -7864320L, 4L, 0L, previous = 0L)
+  wheel_down <- windows_mouse_events(1L, 1L, 4287102976, 4L, 0L, previous = 0L)
   expect_identical(wheel_down[[1]]$direction, "down")
 })
 

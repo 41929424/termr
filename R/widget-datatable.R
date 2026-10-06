@@ -52,6 +52,35 @@ column <- function(label = NULL, width = NULL, align = NULL, formatter = NULL,
   )
 }
 
+#' Create a DataTable column filter
+#'
+#' Filters combine with AND in `filter_columns()`. Predicates can
+#' also be supplied directly as `function(values) logical`.
+#' @param type One of `"equals"`, `"contains"`, `"regex"`, `"range"`, or
+#'   `"missing"`.
+#' @param value Comparison value, text pattern, or regular expression.
+#' @param min,max Inclusive or exclusive range bounds.
+#' @param case_sensitive Case-sensitive text matching?
+#' @param inclusive Include range endpoints?
+#' @return An object suitable for a named `filter_columns()` list.
+#' @export
+table_filter <- function(type = c("equals", "contains", "regex", "range", "missing"),
+                         value = NULL, min = NULL, max = NULL,
+                         case_sensitive = FALSE, inclusive = TRUE) {
+  type <- match.arg(type)
+  check_flag(case_sensitive)
+  check_flag(inclusive)
+  if (type == "equals" && length(value) != 1L) stop("Equality filters need one `value`.", call. = FALSE)
+  if (type %in% c("contains", "regex") && (!is.character(value) || length(value) != 1L || is.na(value))) {
+    stop("Text filters need one non-missing character `value`.", call. = FALSE)
+  }
+  if (type == "range" && (is.null(min) || is.null(max) || length(min) != 1L || length(max) != 1L ||
+      is.na(min) || is.na(max) || min > max)) stop("Range filters need ordered `min` and `max` values.", call. = FALSE)
+  if (type == "regex") search_query(value, case_sensitive = case_sensitive, regex = TRUE)
+  structure(list(type = type, value = value, min = min, max = max,
+                 case_sensitive = case_sensitive, inclusive = inclusive), class = "termr_table_filter")
+}
+
 #' @title DataTable widget
 #' @description A virtualised table for data frames. See [data_table()].
 #' @rdname DataTable-class
@@ -100,6 +129,7 @@ DataTable <- R6::R6Class(
     #' @param row_style,cell_style Style hooks.
     #' @param max_column_width Upper limit for estimated widths.
     #' @param frozen_columns,header_sort,editable,on_edit See the fields.
+    #' @param filters Named column filters for `filter_columns()`.
     #' @param id,classes,style,disabled See [Widget].
     initialize = function(data, cursor = "row", columns = NULL, formatters = NULL, row_names = NA,
                           header = TRUE, zebra = FALSE, row_style = NULL, cell_style = NULL,
@@ -151,8 +181,11 @@ DataTable <- R6::R6Class(
         bind("pageup", "page_up"), bind("pagedown", "page_down"),
         bind("home,ctrl+home", "first_row"), bind("end,ctrl+end", "last_row"),
         bind("enter", "activate", "Open"),
+        bind("ctrl+c", "copy_selection", "Copy rows"),
         bind("ctrl+f", "open_find", "Find"), bind("ctrl+g", "open_goto", "Go to row"),
         bind("f3", "find_next"), bind("shift+f3", "find_previous"),
+        bind("shift+up", "extend_selection_up"), bind("shift+down", "extend_selection_down"),
+        bind("ctrl+alt+left", "move_column_left"), bind("ctrl+alt+right", "move_column_right"),
         bind("alt+right", "widen_column"), bind("alt+left", "narrow_column")
       ), if (self$header_sort) list(bind("s", "sort_column", "Sort")))
     },
@@ -168,7 +201,11 @@ DataTable <- R6::R6Class(
       }
       private$.data <- data
       private$.view <- NULL
+      private$.column_order <- seq_along(data)
+      private$.selection_anchor <- NA_integer_
+      private$.selection_end <- NA_integer_
       private$.base_view <- NULL
+      private$.filters <- list()
       private$.sort <- NULL
       private$.find <- NULL
       private$.find_hit <- NULL
@@ -246,6 +283,26 @@ DataTable <- R6::R6Class(
       private$apply_sort(announce = FALSE)
     },
 
+    #' @description Filter named columns; all predicates are combined with
+    #'   AND and evaluated in row chunks. A predicate may be a
+    #'   `table_filter()` or `function(values) logical`.
+    #' @param filters Named list by column; `NULL` clears column filters.
+    filter_columns = function(filters = NULL) {
+      if (is.null(filters)) {
+        private$.filters <- list()
+      } else {
+        filters <- check_named_list(filters, "filters")
+        unknown <- setdiff(names(filters), names(private$.data))
+        if (length(unknown)) stop(sprintf("Unknown filter column \"%s\".", unknown[[1L]]), call. = FALSE)
+        for (i in seq_along(filters)) {
+          if (inherits(filters[[i]], "termr_table_filter")) next
+          check_function(filters[[i]], sprintf("filters[[%d]]", i))
+        }
+        private$.filters <- filters
+      }
+      private$apply_sort(announce = FALSE)
+    },
+
     #' @description Move the cursor (and scroll so it is visible).
     #' @param row Position in the view.
     #' @param column Column name or number (cell cursor).
@@ -279,6 +336,76 @@ DataTable <- R6::R6Class(
     #' @param row Original row number.
     row_data = function(row) {
       as.list(private$.data[row, , drop = FALSE])
+    },
+
+    #' @description Data for selected view rows, in view order. A single
+    #'   cursor row is returned when no range is selected.
+    selected_data = function() {
+      pos <- private$selected_positions()
+      private$.data[private$view_rows()[pos], , drop = FALSE]
+    },
+
+    #' @description Data in the current viewport, in display order.
+    visible_data = function() {
+      g <- private$geometry()
+      if (is.null(g) || !length(g$rows)) return(private$.data[integer(), private$visible_columns(), drop = FALSE])
+      private$.data[private$view_rows()[g$rows], g$columns, drop = FALSE]
+    },
+
+    #' @description Move a column in the display order.
+    #' @param column Column name or number.
+    #' @param to New 1-based position in the complete column order.
+    reorder_column = function(column, to) {
+      j <- private$column_index(column)
+      if (length(to) != 1L || is.na(to) || !is.numeric(to) || to < 1 || to > length(private$.column_order)) {
+        stop("`to` must be a valid 1-based column position.", call. = FALSE)
+      }
+      to <- as.integer(to)
+      from <- match(j, private$.column_order)
+      if (from != to) {
+        private$.column_order <- append(private$.column_order[-from], j, after = to - 1L)
+        private$.state$offset_col <- 0L
+        private$.find_hit <- NULL
+        self$invalidate()
+        self$post_message("datatable.columns_reordered", list(column = names(private$.data)[[j]], from = from, to = to))
+      }
+      invisible(self)
+    },
+
+    #' @description Select a range of rows by view position.
+    #' @param from,to 1-based positions in the view.
+    select_range = function(from, to = from) {
+      n <- self$row_count
+      if (!n) return(invisible(self))
+      if (length(from) != 1L || length(to) != 1L || is.na(from) || is.na(to) ||
+          !is.numeric(from) || !is.numeric(to) || from < 1 || to < 1 || from > n || to > n) {
+        stop("Selection positions must be between 1 and the row count.", call. = FALSE)
+      }
+      private$.selection_anchor <- as.integer(from)
+      private$.selection_end <- as.integer(to)
+      self$move_cursor(row = to)
+      self$invalidate()
+      invisible(self)
+    },
+
+    #' @description Copy selected rows as tab-separated values.
+    #' @param headers Include column names?
+    #' @param system Also write to the system clipboard when supported?
+    copy_selection = function(headers = TRUE, system = TRUE) {
+      check_flag(headers)
+      check_flag(system)
+      app <- self$app
+      if (is.null(app)) stop("The table is not attached to an app.", call. = FALSE)
+      data <- self$selected_data()[, private$visible_columns(), drop = FALSE]
+      rows <- lapply(seq_len(nrow(data)), function(i) vapply(data, function(col) {
+        value <- col[[i]]
+        text <- if (!length(value) || all(is.na(value))) "NA" else paste(as.character(value), collapse = ",")
+        if (grepl('[\t\r\n"]', text)) paste0('"', gsub('"', '""', text, fixed = TRUE), '"') else text
+      }, ""))
+      lines <- vapply(rows, paste, "", collapse = "\t")
+      if (headers) lines <- c(paste(names(data), collapse = "\t"), lines)
+      app$clipboard_write(paste(lines, collapse = "\n"), system = system)
+      invisible(self)
     },
 
     #' @description Jump to a row of the view (and scroll to it).
@@ -342,7 +469,9 @@ DataTable <- R6::R6Class(
       private$.specs[[j]]$visible <- visible
       vis <- private$visible_columns()
       if (private$.state$cursor_col > 0L && !(private$.state$cursor_col %in% vis)) {
-        private$.state$cursor_col <- vis[[min(findInterval(j, vis) + 1L, length(vis))]]
+        old_position <- match(j, private$.column_order)
+        positions <- match(vis, private$.column_order)
+        private$.state$cursor_col <- vis[[which.min(abs(positions - old_position))]]
       }
       private$.find_hit <- NULL
       self$invalidate()
@@ -355,6 +484,7 @@ DataTable <- R6::R6Class(
       data.frame(
         name = vapply(private$.specs, `[[`, "", "name"),
         label = vapply(private$.specs, `[[`, "", "label"),
+        display_position = match(seq_along(private$.specs), private$.column_order),
         width = vapply(private$.specs, `[[`, 1L, "width"),
         visible = vapply(private$.specs, `[[`, TRUE, "visible"),
         sortable = vapply(private$.specs, `[[`, TRUE, "sortable"),
@@ -476,6 +606,16 @@ DataTable <- R6::R6Class(
     action_cursor_up = function() private$step_rows(-1L),
     #' @description Move down.
     action_cursor_down = function() private$step_rows(1L),
+    #' @description Extend selection upward.
+    action_extend_selection_up = function() private$extend_selection(-1L),
+    #' @description Extend selection downward.
+    action_extend_selection_down = function() private$extend_selection(1L),
+    #' @description Move the active column left in display order.
+    action_move_column_left = function() private$move_active_column(-1L),
+    #' @description Move the active column right in display order.
+    action_move_column_right = function() private$move_active_column(1L),
+    #' @description Copy selected rows.
+    action_copy_selection = function() self$copy_selection(),
     #' @description Move left (cell cursor) or scroll left.
     action_cursor_left = function() private$step_cols(-1L),
     #' @description Move right (cell cursor) or scroll right.
@@ -526,6 +666,8 @@ DataTable <- R6::R6Class(
     on_mouse_down = function(event) {
       if (event$button != "left") return(invisible())
       private$.resizing <- NULL
+      private$.column_drag <- NULL
+      private$.selection_drag <- FALSE
       sep <- private$separator_at(event$screen_x, event$screen_y)
       if (!is.na(sep)) {
         private$.resizing <- list(column = sep, width = private$.specs[[sep]]$width)
@@ -537,11 +679,22 @@ DataTable <- R6::R6Class(
       if (identical(hit$part, "header") && !is.na(hit$column)) {
         spec <- private$.specs[[hit$column]]
         private$.state$active_col <- hit$column
+        private$.column_drag <- list(column = hit$column, from = event$screen_x, moved = FALSE,
+                                     shift = isTRUE(event$shift))
         if (self$header_sort) self$toggle_sort(hit$column, add = isTRUE(event$shift))
         self$post_message("datatable.header_selected", list(column = spec$name, index = hit$column))
       } else if (identical(hit$part, "body")) {
         if (!is.na(hit$column)) private$.state$active_col <- hit$column
-        self$move_cursor(row = hit$row, column = if (!is.na(hit$column) && self$cursor_type == "cell") hit$column)
+        if (isTRUE(event$shift) && !is.na(private$.selection_anchor)) {
+          private$.selection_end <- hit$row
+          self$move_cursor(row = hit$row, column = if (!is.na(hit$column) && self$cursor_type == "cell") hit$column)
+        } else {
+          private$.selection_anchor <- hit$row
+          private$.selection_end <- hit$row
+          self$move_cursor(row = hit$row, column = if (!is.na(hit$column) && self$cursor_type == "cell") hit$column)
+        }
+        private$.selection_drag <- TRUE
+        self$invalidate()
         last <- private$.last_click
         private$.last_click <- list(time = event$time, row = hit$row, column = hit$column)
         if (self$editable && !is.null(last) && event$time - last$time < 0.5 && identical(last$row, hit$row) &&
@@ -557,7 +710,29 @@ DataTable <- R6::R6Class(
     #' @param event A `MouseEvent`.
     on_drag_move = function(event) {
       rz <- private$.resizing
-      if (is.null(rz)) return(invisible())
+      if (is.null(rz)) {
+        drag <- private$.column_drag
+        if (!is.null(drag) && abs(event$screen_x - drag$from) >= 2L) {
+          hit <- private$locate(event$screen_x, event$screen_y)
+          if (!is.null(hit) && identical(hit$part, "header") && !is.na(hit$column)) {
+            drag$moved <- TRUE
+            private$.column_drag <- drag
+            from <- match(drag$column, private$.column_order)
+            to <- match(hit$column, private$.column_order)
+            if (!is.na(from) && !is.na(to) && from != to) self$reorder_column(drag$column, to)
+          }
+          event$stop()
+        } else if (isTRUE(private$.selection_drag)) {
+          hit <- private$locate(event$screen_x, event$screen_y)
+          if (!is.null(hit) && identical(hit$part, "body")) {
+            private$.selection_end <- hit$row
+            self$move_cursor(row = hit$row)
+            self$invalidate()
+          }
+          event$stop()
+        }
+        return(invisible())
+      }
       private$set_width(rz$column, rz$width + (event$screen_x - event$origin_x), fixed = TRUE, notify = FALSE)
       event$stop()
     },
@@ -566,7 +741,12 @@ DataTable <- R6::R6Class(
     #' @param event A `MouseEvent`.
     on_drag_end = function(event) {
       rz <- private$.resizing
-      if (is.null(rz)) return(invisible())
+      if (is.null(rz)) {
+        drag <- private$.column_drag
+        private$.column_drag <- NULL
+        private$.selection_drag <- FALSE
+        return(invisible())
+      }
       private$.resizing <- NULL
       spec <- private$.specs[[rz$column]]
       self$post_message("datatable.column_resized", list(column = spec$name, width = spec$width))
@@ -714,6 +894,7 @@ DataTable <- R6::R6Class(
     .row_names = NULL,
     .options = NULL,
     .base_view = NULL,
+    .filters = list(),
     .sort = NULL,
     .find = NULL,
     .find_text = "",
@@ -724,12 +905,19 @@ DataTable <- R6::R6Class(
     .bar_text = "",
     .resizing = NULL,
     .last_click = NULL,
+    .column_order = integer(),
+    .column_drag = NULL,
+    .selection_anchor = NA_integer_,
+    .selection_end = NA_integer_,
+    .selection_drag = FALSE,
 
     view_rows = function() private$.view %||% seq_len(nrow(private$.data)),
 
     set_view = function(rows) {
       selected <- self$selected_row()
       private$.view <- rows
+      private$.selection_anchor <- NA_integer_
+      private$.selection_end <- NA_integer_
       private$.find_hit <- NULL
       view <- private$view_rows()
       pos <- if (is.na(selected)) NA_integer_ else match(selected, view)
@@ -762,7 +950,38 @@ DataTable <- R6::R6Class(
       out
     },
 
-    visible_columns = function() which(vapply(private$.specs, function(sp) sp$visible, TRUE)),
+    visible_columns = function() private$.column_order[
+      vapply(private$.column_order, function(j) private$.specs[[j]]$visible, TRUE)
+    ],
+
+    selected_positions = function() {
+      n <- self$row_count
+      if (!n) return(integer())
+      a <- private$.selection_anchor
+      b <- private$.selection_end
+      if (is.na(a) || is.na(b)) return(if (private$.state$cursor_row > 0L) private$.state$cursor_row else integer())
+      a <- min(n, max(1L, a))
+      b <- min(n, max(1L, b))
+      seq.int(min(a, b), max(a, b))
+    },
+
+    extend_selection = function(delta) {
+      n <- self$row_count
+      if (!n) return(invisible())
+      if (is.na(private$.selection_anchor)) private$.selection_anchor <- max(1L, private$.state$cursor_row)
+      private$.selection_end <- max(1L, min(n, private$.state$cursor_row + delta))
+      self$move_cursor(row = private$.selection_end)
+      self$invalidate()
+    },
+
+    move_active_column = function(delta) {
+      vis <- private$visible_columns()
+      k <- match(private$active_column(), vis)
+      if (is.na(k)) return(invisible())
+      target <- match(vis[[k]], private$.column_order) + delta
+      if (target >= 1L && target <= length(private$.column_order)) self$reorder_column(vis[[k]], target)
+      invisible()
+    },
 
     # Layout of the visible part, from the last region. Columns: the frozen
     # ones first (always shown), then the scrollable ones from the column
@@ -900,6 +1119,7 @@ DataTable <- R6::R6Class(
 
     row_paint_style = function(pos, row, st, focused) {
       layered <- NULL
+      if (pos %in% private$selected_positions()) layered <- table_styles$match
       if (self$zebra && pos %% 2L == 0L) layered <- table_styles$zebra
       if (!is.null(self$row_style)) layered <- merge_styles(layered, as_style(self$row_style(row, private$.data)))
       if (self$cursor_type == "row" && pos == private$.state$cursor_row) {
@@ -981,6 +1201,7 @@ DataTable <- R6::R6Class(
     apply_sort = function(announce = TRUE) {
       so <- private$.sort
       base <- private$.base_view
+      base <- private$filter_rows(base)
       if (is.null(so)) {
         private$set_view(base)
       } else {
@@ -1008,6 +1229,65 @@ DataTable <- R6::R6Class(
         ))
       }
       invisible(self)
+    },
+
+    filter_rows = function(rows = NULL) {
+      filters <- private$.filters
+      if (!length(filters)) return(rows)
+      n <- if (is.null(rows)) nrow(private$.data) else length(rows)
+      if (!n) return(integer())
+      chunk_size <- 5000L
+      out <- list()
+      count <- 0L
+      changed <- FALSE
+      starts <- seq.int(1L, n, by = chunk_size)
+      for (start in starts) {
+        positions <- seq.int(start, min(n, start + chunk_size - 1L))
+        source_rows <- if (is.null(rows)) positions else rows[positions]
+        keep <- rep(TRUE, length(source_rows))
+        for (name in names(filters)) {
+          j <- match(name, names(private$.data))
+          values <- private$.data[[j]][source_rows]
+          filter <- filters[[name]]
+          if (inherits(filter, "termr_table_filter")) {
+            type <- filter$type
+            if (type == "missing") {
+              matched <- is.na(values)
+            } else if (type == "equals") {
+              matched <- if (length(filter$value) == 1L && is.na(filter$value)) is.na(values) else !is.na(values) & values == filter$value
+            } else if (type == "contains") {
+              chars <- as.character(values)
+              pattern <- if (filter$case_sensitive) filter$value else tolower(filter$value)
+              text <- if (filter$case_sensitive) chars else tolower(chars)
+              matched <- !is.na(text) & grepl(pattern, text, fixed = TRUE)
+            } else if (type == "regex") {
+              matched <- !is.na(values) & grepl(filter$value, as.character(values), perl = TRUE,
+                                                 ignore.case = !filter$case_sensitive)
+            } else {
+              lower <- if (filter$inclusive) values >= filter$min else values > filter$min
+              upper <- if (filter$inclusive) values <= filter$max else values < filter$max
+              matched <- !is.na(values) & lower & upper
+            }
+          } else {
+            matched <- filter(values)
+          }
+          if (!is.logical(matched) || length(matched) != length(keep)) {
+            stop(sprintf("Filter for column `%s` must return one logical per value.", name), call. = FALSE)
+          }
+          matched[is.na(matched)] <- FALSE
+          keep <- keep & matched
+          if (!any(keep)) break
+        }
+        accepted <- source_rows[keep]
+        if (length(accepted) != length(source_rows) && !changed) {
+          changed <- TRUE
+          if (count) out[[length(out) + 1L]] <- if (is.null(rows)) seq_len(count) else rows[seq_len(count)]
+        }
+        if (changed && length(accepted)) out[[length(out) + 1L]] <- accepted
+        count <- count + length(accepted)
+      }
+      if (!changed) return(rows)
+      unlist(out, use.names = FALSE)
     },
 
     # " ^", " v" (plus the rank with several keys) for sorted columns.

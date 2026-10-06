@@ -78,10 +78,16 @@ the current sort keys.}
     \item \href{#method-DataTable-clear_sort}{\code{DataTable$clear_sort()}}
     \item \href{#method-DataTable-toggle_sort}{\code{DataTable$toggle_sort()}}
     \item \href{#method-DataTable-filter}{\code{DataTable$filter()}}
+    \item \href{#method-DataTable-filter_columns}{\code{DataTable$filter_columns()}}
     \item \href{#method-DataTable-move_cursor}{\code{DataTable$move_cursor()}}
     \item \href{#method-DataTable-scroll_to_row}{\code{DataTable$scroll_to_row()}}
     \item \href{#method-DataTable-selected_row}{\code{DataTable$selected_row()}}
     \item \href{#method-DataTable-row_data}{\code{DataTable$row_data()}}
+    \item \href{#method-DataTable-selected_data}{\code{DataTable$selected_data()}}
+    \item \href{#method-DataTable-visible_data}{\code{DataTable$visible_data()}}
+    \item \href{#method-DataTable-reorder_column}{\code{DataTable$reorder_column()}}
+    \item \href{#method-DataTable-select_range}{\code{DataTable$select_range()}}
+    \item \href{#method-DataTable-copy_selection}{\code{DataTable$copy_selection()}}
     \item \href{#method-DataTable-goto_row}{\code{DataTable$goto_row()}}
     \item \href{#method-DataTable-column_width}{\code{DataTable$column_width()}}
     \item \href{#method-DataTable-set_column_width}{\code{DataTable$set_column_width()}}
@@ -97,6 +103,11 @@ the current sort keys.}
     \item \href{#method-DataTable-set_cell}{\code{DataTable$set_cell()}}
     \item \href{#method-DataTable-action_cursor_up}{\code{DataTable$action_cursor_up()}}
     \item \href{#method-DataTable-action_cursor_down}{\code{DataTable$action_cursor_down()}}
+    \item \href{#method-DataTable-action_extend_selection_up}{\code{DataTable$action_extend_selection_up()}}
+    \item \href{#method-DataTable-action_extend_selection_down}{\code{DataTable$action_extend_selection_down()}}
+    \item \href{#method-DataTable-action_move_column_left}{\code{DataTable$action_move_column_left()}}
+    \item \href{#method-DataTable-action_move_column_right}{\code{DataTable$action_move_column_right()}}
+    \item \href{#method-DataTable-action_copy_selection}{\code{DataTable$action_copy_selection()}}
     \item \href{#method-DataTable-action_cursor_left}{\code{DataTable$action_cursor_left()}}
     \item \href{#method-DataTable-action_cursor_right}{\code{DataTable$action_cursor_right()}}
     \item \href{#method-DataTable-action_page_up}{\code{DataTable$action_page_up()}}
@@ -217,6 +228,7 @@ the current sort keys.}
       \item{\code{max_column_width}}{Upper limit for estimated widths.}
       \item{\code{frozen_columns, header_sort, editable, on_edit}}{See the fields.}
       \item{\code{id, classes, style, disabled}}{See \link{Widget}.}
+      \item{\code{filters}}{Named column filters for \code{filter_columns()}.}
     }
     \if{html}{\out{</div>}}
   }
@@ -342,6 +354,27 @@ or \code{NULL} for all rows.}
 }
 
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-filter_columns"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-filter_columns}{}}}
+\subsection{\code{DataTable$filter_columns()}}{
+  Filter named columns; all predicates are combined with
+AND and evaluated in row chunks. A predicate may be a
+\code{table_filter()} or \code{function(values) logical}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$filter_columns(filters = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{filters}}{Named list by column; \code{NULL} clears column filters.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-DataTable-move_cursor"></a>}}
 \if{latex}{\out{\hypertarget{method-DataTable-move_cursor}{}}}
 \subsection{\code{DataTable$move_cursor()}}{
@@ -406,6 +439,90 @@ or \code{NULL} for all rows.}
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{row}}{Original row number.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-selected_data"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-selected_data}{}}}
+\subsection{\code{DataTable$selected_data()}}{
+  Data for selected view rows, in view order. A single
+cursor row is returned when no range is selected.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$selected_data()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-visible_data"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-visible_data}{}}}
+\subsection{\code{DataTable$visible_data()}}{
+  Data in the current viewport, in display order.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$visible_data()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-reorder_column"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-reorder_column}{}}}
+\subsection{\code{DataTable$reorder_column()}}{
+  Move a column in the display order.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$reorder_column(column, to)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{column}}{Column name or number.}
+      \item{\code{to}}{New 1-based position in the complete column order.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-select_range"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-select_range}{}}}
+\subsection{\code{DataTable$select_range()}}{
+  Select a range of rows by view position.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$select_range(from, to = from)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{from, to}}{1-based positions in the view.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-copy_selection"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-copy_selection}{}}}
+\subsection{\code{DataTable$copy_selection()}}{
+  Copy selected rows as tab-separated values.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$copy_selection(headers = TRUE, system = TRUE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{headers}}{Include column names?}
+      \item{\code{system}}{Also write to the system clipboard when supported?}
     }
     \if{html}{\out{</div>}}
   }
@@ -674,6 +791,66 @@ with \code{row}, \code{column}, \code{old} and \code{value}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{DataTable$action_cursor_down()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-action_extend_selection_up"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-action_extend_selection_up}{}}}
+\subsection{\code{DataTable$action_extend_selection_up()}}{
+  Extend selection upward.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$action_extend_selection_up()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-action_extend_selection_down"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-action_extend_selection_down}{}}}
+\subsection{\code{DataTable$action_extend_selection_down()}}{
+  Extend selection downward.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$action_extend_selection_down()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-action_move_column_left"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-action_move_column_left}{}}}
+\subsection{\code{DataTable$action_move_column_left()}}{
+  Move the active column left in display order.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$action_move_column_left()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-action_move_column_right"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-action_move_column_right}{}}}
+\subsection{\code{DataTable$action_move_column_right()}}{
+  Move the active column right in display order.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$action_move_column_right()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-action_copy_selection"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-action_copy_selection}{}}}
+\subsection{\code{DataTable$action_copy_selection()}}{
+  Copy selected rows.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$action_copy_selection()}
     \if{html}{\out{</div>}}
   }
 }

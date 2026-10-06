@@ -324,6 +324,51 @@ test_that("control characters in the text never reach the terminal", {
   expect_false(grepl("\u0007", out, fixed = TRUE))
 })
 
+test_that("replace APIs are undoable and replace-all reports counts", {
+  ed <- text_area("cat cat\ndog cat")
+  expect_true(ed$replace("fox", query = "cat"))
+  expect_identical(ed$value, "fox cat\ndog cat")
+  expect_identical(ed$replace_all("cat", "lynx"), 2L)
+  expect_identical(ed$value, "fox lynx\ndog lynx")
+  expect_true(ed$undo())
+  expect_identical(ed$value, "fox cat\ndog cat")
+  expect_error(ed$replace_all("(", "x", regex = TRUE), "Invalid regular expression")
+})
+
+test_that("oversized edits do not exceed the undo memory budget", {
+  ed <- text_area("")
+  ed$insert(strrep("x", 2000001L), kind = "paste")
+  expect_lte(ed$history_size, 2e6)
+  expect_false(ed$can_undo)
+})
+
+test_that("goto-line UI and cursor positions distinguish graphemes from cells", {
+  ed <- text_area("\\u00e9\\u754ca\nsecond\nthird")
+  expect_identical(ed$cursor_position(), list(line = 1L, grapheme_column = 1L, display_column = 1L))
+  ed$goto_line(1, 3)
+  expect_identical(ed$cursor_position(), list(line = 1L, grapheme_column = 3L, display_column = 3L))
+  pilot <- test_app(app(ed), 30, 5)
+  pilot$press("ctrl+g")
+  pilot$type("3")
+  pilot$press("enter")
+  expect_identical(ed$cursor_row, 3L)
+})
+
+test_that("replace bar replaces all and R highlighter tokenizes incomplete code", {
+  ed <- text_area("if (TRUE) 42", highlighter = r_highlighter(), language = "r")
+  buf <- render_widget(ed, 30, 3)
+  expect_false(identical(buf$get_cell(2, 2)$fg, ""))
+  pilot <- test_app(app(ed), 30, 4)
+  pilot$press("ctrl+f", "alt+r")
+  pilot$type("if")
+  pilot$press("tab")
+  pilot$type("else")
+  pilot$press("ctrl+enter")
+  expect_identical(ed$value, "else (TRUE) 42")
+  broken <- text_area("abc", highlighter = function(lines, state = NULL) list(data.frame(foo = 1)))
+  expect_error(render_widget(broken, 20, 3), "start.*end.*token")
+})
+
 test_that("wrapping starts keep every grapheme exactly once", {
   set.seed(3)
   for (i in 1:50) {

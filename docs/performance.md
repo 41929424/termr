@@ -72,7 +72,23 @@ change is the only thing pending, the layout pass is skipped entirely
 * **Natural sizes** (what a widget needs) are cached per widget and cleared
   by `invalidate()` for the widget and its ancestors only.
 * **Text wrapping** in `text_area()` is cached per line and width.
-* **Scroll views** lay out only the children that are in view.
+* **Scroll views** index ordinary vertical child rectangles. With 64 or more
+  children, binary search selects the viewport plus two rows of overscan;
+  layout, painting, mouse hit testing and snapshots visit that selection.
+  Initial measurement and changes to sizes/content/structure rebuild the
+  index. Scrolling translates cached positions without remeasuring children.
+  Width changes rebuild it, including variable-height wrapped text.
+  Custom and nonvertical layouts keep their existing algorithm. Focus reveal
+  can request a complete layout. `options(termr.indexed_layout = FALSE)` is
+  an internal debugging oracle, not an application tuning API.
+
+### Frame profiling
+
+Set `options(termr.profile = TRUE)` to collect `app$profile_last_frame`:
+layout, paint, diff and ANSI milliseconds; widgets measured, laid out and
+painted; style resolutions; selector matches; dirty rectangles/cells; ANSI
+bytes. Profiling is off by default. Counters describe work, while timings
+depend on the host and can be zero at the Windows timer's resolution.
 
 ## Virtualisation
 
@@ -117,13 +133,29 @@ Against the 0.2.0 baseline (same machine): colour change in the large tree
 139 -> 5 ms, table cursor/scroll about 2x faster, label updates unchanged.
 The full run is recorded in `tools/bench/last-run.txt`.
 
+The 0.4 development ScrollView profile is recorded in
+`tools/bench/baselines/windows-0.3-scroll.csv` and
+`tools/bench/baselines/windows-0.4-scroll.csv`. On the same host and 100x30
+viewport, scrolling five 10,000-child rows fell from about 1,472 ms to 20 ms.
+The new `tools/bench/tree-profile.R` records wide-tree mount and traversal
+costs. These local timings are advisory; structural profile counters are more
+stable than wall-clock values.
+
+`tools/bench/textarea-storage.R` measures construction, insertion, undo/redo,
+find misses and viewport rendering at 100 KB, 1 MB, 5 MB and 20 MB. The 20 MB
+case constructed in 180 ms, searched in 820 ms and rendered in under 10 ms on
+this host, so the line-vector model remains adequate for these operations.
+The tree profile also includes batched mount and `walk()` timings at 100,
+1,000, 5,000 and 10,000 children.
+
 ## Tips
 
 * Update widgets from one timer callback rather than many timers; several
   changes in one tick cost one repaint.
 * Keep `height = "auto"` containers small; very deep trees of `auto` sizes
   are the most expensive layouts.
-* For long lists use `option_list()`, `data_table()` or `log_view()` rather
-  than thousands of labels; use `scroll_view()` for hundreds, not tens of
-  thousands, of children.
+* For very large repeated data use `data_table()` or `log_view()`. Vertical
+  `scroll_view()` now indexes large ordinary child lists and lays out the
+  visible rows plus two rows of overscan. First layout still measures all
+  children, and custom container layout methods use the regular path.
 * Use signals / `batch()` to group state changes.

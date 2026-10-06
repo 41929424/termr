@@ -37,9 +37,30 @@ def strip(text):
 
 
 class Session:
-    def __init__(self, script, cols=60, rows=20):
+    def __init__(self, script, cols=60, rows=20, tty_mode="controlling"):
         self.pid, self.fd = pty.fork()
         if self.pid == 0:
+            if tty_mode == "controlling":
+                try:
+                    tty = os.open("/dev/tty", os.O_RDWR)
+                    valid = os.isatty(0) and os.tcgetpgrp(tty) == os.getpgrp()
+                    os.close(tty)
+                except OSError:
+                    valid = False
+                os.write(1, b"__PTY_CTTY_OK__\n" if valid else b"__PTY_CTTY_MISSING__\n")
+            elif tty_mode in ("stdin", "none"):
+                fcntl.ioctl(0, termios.TIOCNOTTY, 0)
+                if tty_mode == "none":
+                    null = os.open(os.devnull, os.O_RDONLY)
+                    os.dup2(null, 0)
+                    os.close(null)
+                    os.write(1, b"__PTY_NO_TTY__\n")
+                else:
+                    try:
+                        os.open("/dev/tty", os.O_RDWR)
+                        os.write(1, b"__PTY_STDIN_FALLBACK_INVALID__\n")
+                    except OSError:
+                        os.write(1, b"__PTY_STDIN_ONLY__\n" if os.isatty(0) else b"__PTY_STDIN_NOT_TTY__\n")
             os.execvp(RSCRIPT, [RSCRIPT, script])
         self.resize(cols, rows)
         self.output = ""
@@ -104,6 +125,8 @@ def normal_session():
     s = Session(os.path.join(ROOT, "inst", "examples", "hello.R"))
     before = None
     s.wait_for("termr demo")
+    check("PTY harness provides a controlling terminal", "__PTY_CTTY_OK__" in s.output,
+          "pty.fork child could not open /dev/tty as its controlling terminal")
     attrs = s.attrs()
     check("raw mode while running (no ICANON, no ECHO)",
           not (attrs[3] & termios.ICANON) and not (attrs[3] & termios.ECHO))
@@ -247,13 +270,43 @@ def error_session():
     check("the error is printed after the screen is restored", "boom from handler" in tail)
 
 
-def termios_restored():
+def stdin_fallback_session():
+    import tempfile
+    log = os.path.join(tempfile.mkdtemp(prefix="termr-pty-stdin-"), "events.log")
+    os.environ["TERMR_PTY_LOG"] = log
+    s = Session(os.path.join(HERE, "keys-app.R"), tty_mode="stdin")
+    check("stdin-only PTY has no controlling terminal", "__PTY_STDIN_ONLY__" in s.output)
+    check("stdin-only PTY app starts", wait_log(log, "ready", 60))
+    s.wait_for("keys app")
+    s.send("a")
+    check("stdin-only PTY key input works", wait_log(log, "key a [a]"))
+    s.resize(50, 15)
+    check("stdin-only PTY resize works", wait_log(log, "resize 50x15", 3))
+    s.send("\x11")
+    code = s.wait_exit()
+    check("stdin-only PTY normal exit", code == 0, f"status {code}")
+
+
+def no_tty_session():
+    script = os.path.join(HERE, "no-tty-app.R")
+    s = Session(script, tty_mode="none")
+    s.wait_for("termr needs an interactive terminal", 10)
+    code = s.wait_exit()
+    output = strip(s.output)
+    check("no-TTY session fails with a termr error", code == 42 and "TERM_ERROR:" in output,
+          f"status {code}: {output[-300:]!r}")
+    check("no-TTY error is not opaque ENXIO", "system error 6" not in output and "No such device" not in output)
+
+
+def termios_restored(stdin_only=False):
     # Run the app inside a shell that prints the terminal settings before
     # and after, in the same pseudo terminal.
     script = os.path.join(ROOT, "inst", "examples", "hello.R")
     cmd = f"stty -g; {RSCRIPT} {script}; echo; stty -g"
     pid, fd = pty.fork()
     if pid == 0:
+        if stdin_only:
+            fcntl.ioctl(0, termios.TIOCNOTTY, 0)
         os.execvp("sh", ["sh", "-c", cmd])
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 20, 60, 0, 0))
     out = ""
@@ -284,6 +337,9 @@ if __name__ == "__main__":
     keys_session()
     error_session()
     termios_restored()
+    stdin_fallback_session()
+    no_tty_session()
+    termios_restored(stdin_only=True)
     if check.failed:
         print(f"{check.failed} check(s) failed")
         sys.exit(1)

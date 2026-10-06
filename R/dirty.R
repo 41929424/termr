@@ -76,7 +76,7 @@ dirty_rects <- function(widgets, bounds, max_rects = 12L, extra = list()) {
 # tells which widgets moved or changed size, so a layout change can still be
 # repainted as a few rectangles (old and new region of each changed widget).
 layout_snapshot <- function(roots) {
-  widgets <- unlist(lapply(roots, function(root) root$walk()), recursive = FALSE)
+  widgets <- unlist(lapply(roots, render_walk), recursive = FALSE)
   regions <- matrix(unlist(lapply(widgets, function(w) {
     r <- w$region
     if (is.null(r) || !w$visible) c(-1L, -1L, -1L, -1L) else c(r$x, r$y, r$width, r$height)

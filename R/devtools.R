@@ -101,6 +101,7 @@ debug_report <- function(app) {
   now <- p$clock()
   rate <- sum(times > now - 1)
   last <- p$.last_event
+  profile <- app$profile_last_frame
   focused <- app$focused
   hovered <- app$hovered
   list(
@@ -112,6 +113,8 @@ debug_report <- function(app) {
     `Last event` = if (is.null(last)) "-" else last,
     Repaints = sprintf("%d full, %d incremental", stats[["full"]], stats[["incremental"]]),
     `Repaints/s` = rate,
+    `Last frame ms` = if (is.null(profile)) "profiling off" else profile$frame_ms,
+    `Layout/paint/diff ms` = if (is.null(profile)) "-" else paste(round(c(profile$layout_ms, profile$paint_ms, profile$diff_ms), 2), collapse = "/"),
     Workers = length(app$workers()),
     Timers = length(p$.timers$timers)
   )

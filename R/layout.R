@@ -15,9 +15,13 @@
 # Limits: min/max are applied after sizing; space taken back by a max limit
 # on a fr child is not redistributed (documented limitation).
 
-layout_tree <- function(widget, region) {
+layout_tree <- function(widget, region, viewport = NULL) {
+  profile_add("widgets_laid_out")
   widget$region <- region
   st <- widget$computed_style()
+  if (indexed_layout_tree(widget, region, st, viewport)) return(invisible(widget))
+  p <- widget_private(widget)
+  p$.render_children <- NULL
   kids <- visible_children(widget)
   for (child in widget$children) {
     if (!child$visible) clear_regions(child)
@@ -26,8 +30,12 @@ layout_tree <- function(widget, region) {
   inner <- content_rect(region, st)
   rects <- widget$arrange_children(kids, inner, st)
   descend <- widget$layout_descend(rects)
+  if (inherits(widget, "ScrollView")) {
+    viewport <- if (is.null(viewport)) widget$viewport else rect_intersect(viewport, widget$viewport)
+    p$.render_children <- kids[descend]
+  }
   for (i in seq_along(kids)) {
-    if (descend[[i]]) layout_tree(kids[[i]], rects[[i]]) else kids[[i]]$region <- rects[[i]]
+    if (descend[[i]]) layout_tree(kids[[i]], rects[[i]], viewport) else kids[[i]]$region <- rects[[i]]
   }
   invisible(widget)
 }
@@ -53,6 +61,7 @@ natural_width <- function(widget, st = widget$computed_style()) {
   if (spec$type == "fixed") return(clamp_size(spec$value, st$min_width, st$max_width))
   cached <- size_cache_get(widget, "natural_width")
   if (!is.null(cached)) return(cached)
+  profile_add("widgets_measured")
   chrome <- chrome_edges(st)
   value <- clamp_size(widget$content_width() + chrome[[2]] + chrome[[4]], st$min_width, st$max_width)
   size_cache_set(widget, "natural_width", value)
@@ -65,6 +74,7 @@ natural_height <- function(widget, width, st = widget$computed_style()) {
   key <- paste0("natural_height_", width)
   cached <- size_cache_get(widget, key)
   if (!is.null(cached)) return(cached)
+  profile_add("widgets_measured")
   chrome <- chrome_edges(st)
   inner_width <- max(0L, width - chrome[[2]] - chrome[[4]])
   value <- clamp_size(widget$content_height(inner_width) + chrome[[1]] + chrome[[3]], st$min_height, st$max_height)
@@ -241,8 +251,45 @@ measure_horizontal <- function(kids, parent_st) {
 # Registry of layout algorithms. Each entry provides `arrange(kids, inner,
 # parent_style)` returning one rect per child and `measure(kids,
 # parent_style)` returning natural content `width()` / `height(width)`.
-layout_algorithms <- list(
+layout_algorithms <- list2env(list(
   vertical = list(arrange = arrange_vertical, measure = measure_vertical),
   horizontal = list(arrange = arrange_horizontal, measure = measure_horizontal),
   grid = list(arrange = arrange_grid, measure = measure_grid)
-)
+), parent = emptyenv())
+
+#' Register an experimental custom container layout
+#'
+#' A registered name can be used as `layout` in [style()]. Custom names start
+#' with `custom_` to keep built-in names reserved.
+#' @param name A unique `custom_` name.
+#' @param arrange `function(children, inner, parent_style)` returning one
+#'   [region()] per child.
+#' @param measure `function(children, parent_style)` returning `width()` and
+#'   `height(width)` functions.
+#' @return The registered name, invisibly.
+#' @export
+register_layout <- function(name, arrange, measure) {
+  check_scalar_character(name, "name")
+  if (!grepl("^custom_[a-z][a-z0-9_]*$", name)) {
+    stop("Custom layout names must start with `custom_` and use lowercase letters, digits, and underscores.", call. = FALSE)
+  }
+  if (exists(name, layout_algorithms, inherits = FALSE)) stop(sprintf("Layout `%s` is already registered.", name), call. = FALSE)
+  check_function(arrange, "arrange")
+  check_function(measure, "measure")
+  assign(name, list(arrange = arrange, measure = measure), envir = layout_algorithms)
+  invisible(name)
+}
+
+#' Remove an experimental custom layout
+#'
+#' Built-in layouts cannot be removed.
+#' @param name A registered `custom_` layout name.
+#' @return `TRUE` when the layout was removed.
+#' @export
+unregister_layout <- function(name) {
+  check_scalar_character(name, "name")
+  if (!startsWith(name, "custom_")) stop("Built-in layouts cannot be removed.", call. = FALSE)
+  if (!exists(name, layout_algorithms, inherits = FALSE)) return(invisible(FALSE))
+  rm(list = name, envir = layout_algorithms)
+  invisible(TRUE)
+}

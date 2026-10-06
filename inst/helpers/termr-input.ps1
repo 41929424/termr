@@ -11,6 +11,19 @@
 #   M <x> <y> <buttons> <flags> <mods>          mouse record (1-based position)
 #   E <message>                                 fatal error
 #
+# Wire field types (decimal ASCII; no raw control-key DWORD is sent):
+#   S: WindowSize.Width/Height are positive System.Int32 values.
+#   K: VirtualKey is WORD/ushort; Char is WCHAR/char (uint16 UTF-16).
+#      Mods reduces the uint32 KeyState DWORD to a mask in 0..7.
+#   M: MouseX/Y are signed SHORTs, translated to 1-based screen positions
+#      (Y also subtracts WindowPosition.Y and can be outside the viewport).
+#      Buttons = dwButtonState and MouseFlags = dwEventFlags are uint32
+#      DWORDs. Buttons' high word is a signed int16 wheel delta.
+#      Mods reduces the uint32 MouseState DWORD to a mask in 0..7.
+#   Rec.EventType, Repeat and ScanCode are WORD/ushort, consumed here only;
+#   KeyDown is BOOL/int32. E carries text rather than numeric fields.
+# R must preserve transmitted DWORDs as doubles, including values > INT_MAX.
+#
 # The script switches the console input to "raw" mode (no line editing,
 # no echo, Ctrl+C as a key, mouse input on, quick-edit off), enables
 # virtual terminal (ANSI) processing on the output when needed, and

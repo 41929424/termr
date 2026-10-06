@@ -176,9 +176,48 @@ test_that("Pilot$run_worker waits for the result", {
   w <- pilot$run_worker(function(x) x + 1, args = list(x = 1))
   expect_identical(w$result, 2)
   seen <- character()
-  pilot$app$run_worker(function() cat("tick\n"), on_stdout = function(line, app) seen <<- c(seen, line))
-  pilot$wait_for(function(app) length(seen) > 0L, timeout = 30)
+  completed <- NULL
+  pilot$app$on("worker.completed", function(event, app) completed <<- event$data$worker)
+  streamed <- pilot$app$run_worker(function() cat("tick\n"), on_stdout = function(line, app) seen <<- c(seen, line))
+  # If the child dies before stdout reaches the callback, stop at that point
+  # and report its diagnostics instead of timing out on a generic predicate.
+  pilot$wait_for(function(app) length(seen) > 0L || !streamed$is_running(), timeout = 30)
   expect_identical(seen, "tick")
+  expect_identical(streamed$state, "completed")
+  expect_identical(completed, streamed)
+})
+
+test_that("installed worker helper and R CMD check startup hooks are safe", {
+  helper <- system.file("helpers", "termr-worker.R", package = "termr")
+  expect_true(nzchar(helper) && file.exists(helper))
+
+  old <- Sys.getenv("R_TESTS", unset = NA_character_)
+  on.exit(if (is.na(old)) Sys.unsetenv("R_TESTS") else Sys.setenv(R_TESTS = old), add = TRUE)
+  Sys.setenv(R_TESTS = "termr-check-hook-must-not-run.R")
+
+  pilot <- test_app(app(label("x")), 20, 2)
+  w <- pilot$run_worker(function() Sys.getenv("R_TESTS"))
+  expect_identical(w$state, "completed")
+  expect_identical(w$result, "")
+})
+
+test_that("a crashed worker reports stderr and exit status promptly", {
+  skip_on_cran()
+  a <- app(label("x"))
+  pilot <- test_app(a, 20, 2)
+  w <- a$run_worker(function() {
+    cat("worker crash diagnostic\n", file = stderr())
+    flush(stderr())
+    quit(save = "no", status = 23L, runLast = FALSE)
+  })
+
+  pilot$wait_for_workers(10)
+  expect_identical(w$state, "failed")
+  expect_match(w$error, "status 23")
+  expect_match(w$error, "worker crash diagnostic")
+  expect_identical(w$stderr, "worker crash diagnostic")
+  expect_length(a$workers(), 0L)
+  expect_false(w$.__enclos_env__$private$process$is_alive())
 })
 
 test_that("inline workers still fire callbacks and keep the app unreferenced", {

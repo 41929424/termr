@@ -89,7 +89,24 @@ Widget <- R6::R6Class(
         if (identical(w, self) || any(vapply(self$ancestors(), identical, logical(1), w))) {
           stop("A widget cannot be mounted inside itself.", call. = FALSE)
         }
-        check_unique_ids(root, w)
+      }
+      check_unique_ids_batch(root, widgets)
+      if (!length(widgets) || all(vapply(widgets, function(w) is.null(w$parent), TRUE))) {
+        count <- length(private$.children)
+        before <- if (position > 0L) private$.children[seq_len(position)] else list()
+        after <- if (position < count) private$.children[seq.int(position + 1L, count)] else list()
+        for (w in widgets) {
+          wp <- widget_private(w)
+          wp$.parent <- self
+        }
+        private$.children <- c(before, widgets, after)
+        app <- self$app
+        if (!is.null(app)) for (w in widgets) app$.__enclos_env__$private$widget_mounted(w)
+        bump_epoch()
+        self$invalidate()
+        return(invisible(self))
+      }
+      for (w in widgets) {
         if (!is.null(w$parent)) {
           if (identical(w$parent, self) && match(TRUE, vapply(private$.children, identical, logical(1), w)) <= position) {
             position <- position - 1L
@@ -144,9 +161,8 @@ Widget <- R6::R6Class(
 
     #' @description This widget followed by all descendants (depth first).
     walk = function() {
-      out <- list(self)
-      for (child in private$.children) out <- c(out, child$walk())
-      out
+      children <- private$.children
+      c(list(self), if (length(children)) unlist(lapply(children, function(child) child$walk()), recursive = FALSE))
     },
 
     #' @description Parent, grandparent, ... up to the root.
@@ -496,6 +512,7 @@ Widget <- R6::R6Class(
     computed_style = function(inherited = NULL) {
       cached <- widget_cache_get(self, "style")
       if (!is.null(cached)) return(cached)
+      profile_add("style_resolutions")
       parent <- private$.parent
       if (is.null(inherited) && !is.null(parent)) inherited <- parent$computed_style()
       # Cascade: type defaults < stylesheet rules < own style (see stylesheet.R).
@@ -654,6 +671,9 @@ Widget <- R6::R6Class(
     .cache_epoch = -1,
     .size_cache = list(),
     .size_epoch = -1,
+    .layout_revision = 0,
+    .layout_index = NULL,
+    .render_children = NULL,
     # Screens: the widget that had focus when another screen covered this one.
     .saved_focus = NULL,
     .handlers = NULL,
@@ -752,15 +772,15 @@ widget_cache_get <- function(w, key) {
 
 size_cache_get <- function(w, key) {
   p <- widget_private(w)
-  if (p$.size_epoch != termr_env$epoch) return(NULL)
+  if (p$.size_epoch != termr_env$layout_epoch) return(NULL)
   p$.size_cache[[key]]
 }
 
 size_cache_set <- function(w, key, value) {
   p <- widget_private(w)
-  if (p$.size_epoch != termr_env$epoch) {
+  if (p$.size_epoch != termr_env$layout_epoch) {
     p$.size_cache <- list()
-    p$.size_epoch <- termr_env$epoch
+    p$.size_epoch <- termr_env$layout_epoch
   }
   p$.size_cache[[key]] <- value
   value
@@ -771,6 +791,8 @@ clear_size_caches <- function(w) {
   while (!is.null(node)) {
     p <- widget_private(node)
     p$.size_cache <- list()
+    p$.layout_revision <- p$.layout_revision + 1
+    p$.layout_index <- NULL
     node <- p$.parent
   }
   invisible()
@@ -789,18 +811,13 @@ widget_cache_set <- function(w, key, value) {
 is_widget <- function(x) inherits(x, "Widget")
 
 flatten_widgets <- function(x) {
-  out <- list()
-  for (item in x) {
-    if (is.null(item)) next
-    if (is_widget(item)) {
-      out[[length(out) + 1L]] <- item
-    } else if (is.list(item) && !is.object(item)) {
-      out <- c(out, flatten_widgets(item))
-    } else {
-      stop(sprintf("Children must be widgets, not %s.", class(item)[[1]]), call. = FALSE)
-    }
-  }
-  out
+  items <- lapply(x, function(item) {
+    if (is.null(item)) return(list())
+    if (is_widget(item)) return(list(item))
+    if (is.list(item) && !is.object(item)) return(flatten_widgets(item))
+    stop(sprintf("Children must be widgets, not %s.", class(item)[[1]]), call. = FALSE)
+  })
+  unlist(items, recursive = FALSE)
 }
 
 # Ids must be unique within one tree (screen). `widget` may already be in
@@ -814,6 +831,24 @@ check_unique_ids <- function(root, widget) {
   inside <- identical(widget_root(widget), root)
   for (id in new_ids) {
     if (sum(root_ids == id) - inside > 0L) {
+      stop(sprintf("Duplicate widget id \"%s\": another widget in this screen already has it.", id), call. = FALSE)
+    }
+  }
+  invisible()
+}
+
+check_unique_ids_batch <- function(root, widgets) {
+  if (!length(widgets)) return(invisible())
+  new_widgets <- unlist(lapply(widgets, function(w) w$walk()), recursive = FALSE)
+  new_ids <- unlist(lapply(new_widgets, function(w) w$id), use.names = FALSE)
+  if (!length(new_ids)) return(invisible())
+  dup <- new_ids[duplicated(new_ids)]
+  if (length(dup)) stop(sprintf("Duplicate widget id \"%s\".", dup[[1]]), call. = FALSE)
+  root_ids <- unlist(lapply(root$walk(), function(w) w$id), use.names = FALSE)
+  moving <- vapply(new_widgets, function(w) identical(widget_root(w), root), TRUE)
+  moving_ids <- unlist(lapply(new_widgets[moving], function(w) w$id), use.names = FALSE)
+  for (id in new_ids) {
+    if (sum(root_ids == id) - sum(moving_ids == id) > 0L) {
       stop(sprintf("Duplicate widget id \"%s\": another widget in this screen already has it.", id), call. = FALSE)
     }
   }
