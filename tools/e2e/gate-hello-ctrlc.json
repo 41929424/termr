@@ -1,0 +1,1 @@
+{"rscript": "inst/examples/hello.R", "cols": 60, "rows": 14, "steps": [["wait", 6.0], ["keys", "\u0003", 1.5]], "exit_timeout": 8, "dump_tail": 300}

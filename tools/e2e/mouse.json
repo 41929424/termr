@@ -1,0 +1,4 @@
+{"rscript": "inst/examples/hello.R",
+ "cols": 50, "rows": 14,
+ "steps": [["wait", 6.0], ["keys", "Ada"], ["keys", "\u001b[<0;5;6M\u001b[<0;5;6m"], ["snap", "clicked button"], ["keys", "\u0003", 1.5]],
+ "exit_timeout": 6}

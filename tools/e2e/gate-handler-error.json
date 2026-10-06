@@ -1,0 +1,1 @@
+{"rscript": "tools/pty/error-app.R", "cols": 60, "rows": 10, "steps": [["wait", 6.0], ["keys", "x", 2.0]], "exit_timeout": 8, "dump_tail": 400}

@@ -1,0 +1,31 @@
+test_that("text_cells splits ASCII into single-width cells", {
+  cells <- text_cells("abc")
+  expect_identical(cells$chars, c("a", "b", "c"))
+  expect_identical(cells$widths, c(1L, 1L, 1L))
+})
+
+test_that("text_cells reports wide characters", {
+  cells <- text_cells("a\u4e2db")
+  expect_identical(cells$chars, c("a", "\u4e2d", "b"))
+  expect_identical(cells$widths, c(1L, 2L, 1L))
+  expect_identical(str_width("a\u4e2db"), 4L)
+})
+
+test_that("combining characters stay with their base character", {
+  cells <- text_cells("e\u0301x")
+  expect_identical(cells$chars, c("e\u0301", "x"))
+  expect_identical(cells$widths, c(1L, 1L))
+})
+
+test_that("control characters are removed so text cannot inject escapes", {
+  expect_identical(sanitize_text("a\033[31mb\tc"), "a[31mb c")
+  expect_identical(text_cells("\033")$chars, character())
+})
+
+test_that("str_truncate and str_align respect display width", {
+  expect_identical(str_truncate("hello", 3), "hel")
+  expect_identical(str_truncate("\u4e2d\u6587", 3), "\u4e2d")
+  expect_identical(str_align("ab", 6, "center"), "  ab  ")
+  expect_identical(str_align("ab", 5, "right"), "   ab")
+  expect_identical(str_align("abcdef", 3), "abc")
+})

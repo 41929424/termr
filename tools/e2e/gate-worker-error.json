@@ -1,0 +1,1 @@
+{"rscript": "tools/e2e/worker-error-app.R", "cols": 70, "rows": 8, "steps": [["wait", 6.0], ["wait", 6.0], ["snap", "after worker error"], ["keys", "q", 1.5]], "exit_timeout": 8, "dump_tail": 300}

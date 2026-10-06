@@ -1,0 +1,1 @@
+{"rscript": "inst/examples/data-explorer.R", "cols": 120, "rows": 34, "steps": [["wait", 9.0], ["snap", "start"], ["keys", "/", 0.5], ["keys", "returned", 0.5], ["keys", "\r", 2.0], ["snap", "filtered"], ["keys", "s", 1.0], ["snap", "sorted"], ["keys", "\u001bOP", 1.0], ["snap", "help (F1)"], ["keys", "\u001b", 0.5], ["keys", "q", 2.0]], "exit_timeout": 8, "dump_tail": 300}

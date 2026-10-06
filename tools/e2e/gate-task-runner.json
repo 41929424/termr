@@ -1,0 +1,1 @@
+{"rscript": "inst/examples/task-runner.R", "cols": 100, "rows": 30, "steps": [["wait", 8.0], ["keys", "\u001b[B\u001b[B", 0.4], ["keys", "\r", 3.0], ["snap", "running"], ["wait", 4.0], ["snap", "done"], ["keys", "q", 2.0]], "exit_timeout": 10, "dump_tail": 300}

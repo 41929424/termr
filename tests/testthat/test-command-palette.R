@@ -1,0 +1,50 @@
+test_that("commands are filtered by prefix, substring and subsequence", {
+  labels <- c("Save file", "Open file", "Quit", "Toggle theme", "Show logs")
+  expect_identical(labels[filter_commands(labels, "s")], c("Save file", "Show logs"))
+  expect_identical(labels[filter_commands(labels, "e")], c("Save file", "Open file", "Toggle theme"))
+  expect_identical(labels[filter_commands(labels, "file")], c("Save file", "Open file"))
+  expect_identical(labels[filter_commands(labels, "tgt")], "Toggle theme")
+  expect_identical(filter_commands(labels, ""), 1:5)
+  expect_length(filter_commands(labels, "zzz"), 0)
+  expect_identical(labels[filter_commands(labels, "(")], character())
+})
+
+test_that("ctrl+p opens the palette, filters and runs a command", {
+  ran <- character()
+  inp <- input(id = "name")
+  a <- app(
+    vertical(inp, label("x")),
+    bind("ctrl+t", function(app) ran <<- c(ran, "theme"), "Toggle theme"),
+    actions = list(export_data = function(app) ran <<- c(ran, "export"))
+  )
+  a$add_command("Say hello", function(app) ran <<- c(ran, "hello"))
+  pilot <- test_app(a, 60, 20)
+  pilot$press("ctrl+p")
+  expect_true(inherits(a$screen, "CommandPalette"))
+  expect_true(any(grepl("Say hello", pilot$screen_text())))
+  expect_true(any(grepl("Toggle theme  (ctrl+t)", pilot$screen_text(), fixed = TRUE)))
+  pilot$type("expo")
+  expect_identical(a$query_one("#palette-list")$choices, "export data")
+  pilot$press("enter")
+  expect_false(inherits(a$screen, "CommandPalette"))
+  expect_identical(ran, "export")
+  expect_identical(a$focused$id, "name")
+  # Arrow keys move the highlight; Escape closes without running.
+  pilot$press("ctrl+p", "down", "escape")
+  expect_identical(ran, "export")
+  pilot$press("ctrl+p")
+  pilot$type("hello")
+  pilot$press("enter")
+  expect_identical(ran, c("export", "hello"))
+  expect_error(a$add_command("x", 1), "action")
+})
+
+test_that("widget bindings with descriptions appear and run on that widget", {
+  t <- data_table(data.frame(a = 1:5), id = "t")
+  a <- app(t)
+  pilot <- test_app(a, 60, 20)
+  pilot$press("ctrl+p")
+  pilot$type("open")
+  pilot$press("enter")
+  expect_identical(t$cursor_row, 1L)
+})

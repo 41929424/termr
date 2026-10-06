@@ -1,0 +1,1 @@
+{"rscript": "inst/examples/form.R", "cols": 70, "rows": 18, "steps": [["wait", 6.0], ["keys", "Ann"], ["snap", "typed"], ["keys", "\u001b", 1.5]], "exit_timeout": 8, "dump_tail": 300}

@@ -1,0 +1,4 @@
+{"rscript": "inst/examples/dataframe-browser.R",
+ "cols": 110, "rows": 26,
+ "steps": [["wait", 9.0], ["snap", "started"], ["keys", "\u001b[C\u001b[C\u001b[C"], ["keys", "s", 1.5], ["snap", "sorted by units"], ["keys", "/"], ["keys", "Figs\r", 3.0], ["snap", "search Figs"], ["keys", "\u001b[6~"], ["snap", "page down"], ["keys", "q", 2.0]],
+ "exit_timeout": 8}

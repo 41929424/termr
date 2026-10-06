@@ -1,0 +1,4 @@
+{"rscript": "inst/examples/kitchen-sink.R",
+ "cols": 100, "rows": 30,
+ "steps": [["wait", 7.0], ["snap", "controls tab"], ["keys", "\u001b[6;5~"], ["snap", "display tab (ctrl+pgdn)"], ["keys", "\u001b[<0;20;1M\u001b[<0;20;1m"], ["snap", "clicked Data tab"], ["keys", "\u0004"], ["snap", "dialog"], ["keys", "\u001b"], ["keys", "\u001b[24~"], ["wait", 0.8], ["snap", "debug overlay (F12)"], ["keys", "q", 2.0]],
+ "exit_timeout": 8}

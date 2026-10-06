@@ -1,0 +1,31 @@
+Package: termr
+Title: Modern Reactive Terminal Applications with Data Workflows
+Version: 0.3.0
+Authors@R:
+    person("termr", "authors", email = "akimm7926@gmail.com",
+           role = c("aut", "cre"))
+Description: Build interactive terminal applications from widgets, layouts,
+    reactive state, keyboard events, focus management and key bindings.
+    Screens are rendered into a virtual framebuffer and only the cells that
+    changed are sent to the terminal as ANSI escape sequences, so
+    applications update without flicker. A headless driver makes every part
+    of an application testable without a real terminal. Includes a
+    virtualised data table, a data frame browser, a multi-line text editor,
+    split panes, a small reactive graph, dialogs, stylesheets, themes
+    (including high contrast and monochrome), mouse and bracketed-paste
+    support and background workers for data-oriented applications.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1.0)
+Imports:
+    grDevices,
+    R6,
+    processx,
+    utils
+Suggests:
+    testthat (>= 3.0.0),
+    withr
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.0

@@ -1,0 +1,1 @@
+{"rscript": "inst/examples/editor.R", "cols": 90, "rows": 26, "steps": [["wait", 7.0], ["keys", "Hello ", 0.5], ["snap", "typed"], ["keys", "\u001a", 0.5], ["keys", "\u0006", 0.3], ["keys", "filler", 0.5], ["snap", "find"], ["keys", "\u001b", 0.3], ["keys", "\u0011", 2.0]], "exit_timeout": 8, "dump_tail": 300}

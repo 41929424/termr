@@ -1,0 +1,10 @@
+^\.git$
+^\.gitignore$
+^LICENSE\.md$
+^ARCHITECTURE\.md$
+^tools$
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.github$
+^\.gitattributes$
+^docs$

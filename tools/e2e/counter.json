@@ -1,0 +1,4 @@
+{"rscript": "inst/examples/counter.R",
+ "cols": 70, "rows": 14,
+ "steps": [["wait", 6.0], ["keys", "\u001b[A\u001b[A\u001b[A"], ["keys", "b"], ["keys", "\t"], ["keys", "-----"], ["wait", 1.2], ["snap", "after edits"], ["keys", "q", 1.5]],
+ "exit_timeout": 6}

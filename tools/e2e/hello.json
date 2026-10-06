@@ -1,0 +1,4 @@
+{"rscript": "inst/examples/hello.R",
+ "cols": 50, "rows": 14,
+ "steps": [["wait", 6.0], ["snap", "started"], ["keys", "Ada Lovelace"], ["keys", "\t"], ["keys", "\r"], ["snap", "greeted"], ["resize", 40, 12], ["snap", "resized"], ["keys", "\u0003", 1.5]],
+ "exit_timeout": 6}
