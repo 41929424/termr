@@ -155,6 +155,3 @@ testing, custom widgets, advanced topics.
 ## License
 
 MIT
-# termr
-
-
