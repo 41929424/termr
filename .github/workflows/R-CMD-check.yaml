@@ -62,4 +62,4 @@ jobs:
         with:
           extra-packages: local::.
       - name: Run PTY checks
-        run: python3 tools/pty/pty-check.py
+        run: python3 tools/pty/pty-check-ci.py
