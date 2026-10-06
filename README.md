@@ -1,6 +1,6 @@
 # termr
 
-> termr — Modern reactive terminal applications for R, with first-class support for data workflows.
+> termr вЂ” Modern reactive terminal applications for R, with first-class support for data workflows.
 
 termr builds interactive terminal applications from widgets, layouts,
 reactive state, keyboard and mouse events, stylesheets and themes. You never
@@ -31,7 +31,7 @@ app(
 
 Or browse any data frame at once: `browse_data(your_data)`.
 
-Status: **0.3.0, experimental** — the API may still change; see
+Status: **0.3.0, experimental** вЂ” the API may still change; see
 [Status](#status).
 
 ## Installation
@@ -155,6 +155,3 @@ testing, custom widgets, advanced topics.
 ## License
 
 MIT
-# termr
-
-

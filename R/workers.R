@@ -109,7 +109,11 @@ Worker <- R6::R6Class(
       script <- system.file("helpers", "termr-worker.R", package = "termr")
       if (!nzchar(script)) stop("The termr worker script is missing.", call. = FALSE)
       rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
-      private$spawn(rscript, c("--vanilla", script, job, out, prog), env = c(TMPDIR = scratch, TMP = scratch, TEMP = scratch))
+      # R CMD check exports R_TESTS. Rscript evaluates it at startup even
+      # with --vanilla, so a worker would otherwise rerun the test suite
+      # before loading its job (and recursively start more workers).
+      private$spawn(rscript, c("--vanilla", script, job, out, prog),
+                    env = c(R_TESTS = "", TMPDIR = scratch, TMP = scratch, TEMP = scratch))
     },
 
     start_command = function(app, command, args, wd, env, timeout) {
@@ -166,7 +170,13 @@ Worker <- R6::R6Class(
       res <- if (file.exists(out)) tryCatch(readRDS(out), error = function(e) NULL)
       if (is.null(res)) {
         err <- paste(utils::tail(self$stderr, 3L), collapse = " ")
-        res <- list(ok = FALSE, message = paste("The worker process stopped without a result.", trimws(err)))
+        status <- p$get_exit_status()
+        status_text <- if (is.null(status)) "unknown" else as.character(status)
+        detail <- if (nzchar(trimws(err))) paste0(" Stderr: ", trimws(err)) else ""
+        res <- list(ok = FALSE,
+                    message = paste0("The worker process exited with status ", status_text,
+                                     " without a result.", detail),
+                    status = status)
       }
       private$finish(res)
     },
