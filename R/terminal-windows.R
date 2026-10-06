@@ -7,6 +7,33 @@
 # The helper also lets Ctrl+C arrive as a key and enables ANSI processing
 # in legacy consoles; it restores both when it exits.
 
+# The helper emits decimal integers. Validate their syntax and range before
+# they reach event control flow; doubles represent every uint32 exactly.
+parse_windows_number <- function(text, field, min, max) {
+  if (!is.character(text) || length(text) != 1L || is.na(text) ||
+      !grepl("^-?[0-9]+$", text)) {
+    stop("termr input helper: invalid ", field, ".", call. = FALSE)
+  }
+  value <- suppressWarnings(as.double(text))
+  if (!is.finite(value) || value < min || value > max) {
+    stop("termr input helper: invalid ", field, ".", call. = FALSE)
+  }
+  value
+}
+
+parse_uint32 <- function(text, field = "uint32") {
+  value <- parse_windows_number(text, field, 0, 4294967295)
+  if (startsWith(text, "-")) {
+    stop("termr input helper: invalid ", field, ".", call. = FALSE)
+  }
+  value
+}
+
+parse_windows_integer <- function(text, field, min = -.Machine$integer.max,
+                                  max = .Machine$integer.max) {
+  as.integer(parse_windows_number(text, field, min, max))
+}
+
 WindowsDriver <- R6::R6Class(
   "WindowsDriver",
   inherit = TerminalDriver,
@@ -105,17 +132,29 @@ WindowsDriver <- R6::R6Class(
     },
 
     parse_line = function(line) {
+      if (!is.character(line) || length(line) != 1L || is.na(line)) {
+        stop("termr input helper: invalid record.", call. = FALSE)
+      }
       fields <- strsplit(line, "\t", fixed = TRUE)[[1]]
+      if (!length(fields)) return(NULL)
+      expected <- switch(fields[[1]], S = 3L, K = 4L, M = 6L, NULL)
+      if (!is.null(expected) && (length(fields) != expected || endsWith(line, "\t"))) {
+        stop("termr input helper: invalid ", fields[[1]], " record: expected ",
+             expected, " fields.", call. = FALSE)
+      }
       switch(
         fields[[1]],
         S = {
-          size <- c(width = as.integer(fields[[2]]), height = as.integer(fields[[3]]))
+          size <- c(width = parse_windows_integer(fields[[2]], "width", min = 1),
+                    height = parse_windows_integer(fields[[3]], "height", min = 1))
           changed <- !identical(size, private$last_size)
           private$last_size <- size
           if (changed && self$started) ResizeEvent$new(size[["width"]], size[["height"]])
         },
         K = {
-          code <- as.integer(fields[[3]])
+          vk <- parse_windows_integer(fields[[2]], "virtual key", 0, 65535)
+          code <- parse_windows_integer(fields[[3]], "UTF-16 code unit", 0, 65535)
+          mods <- parse_windows_integer(fields[[4]], "modifiers", 0, 7)
           # Characters outside the BMP arrive as UTF-16 surrogate pairs.
           if (code >= 0xD800L && code <= 0xDBFFL) {
             private$high_surrogate <- code
@@ -125,12 +164,19 @@ WindowsDriver <- R6::R6Class(
             code <- 0x10000L + (private$high_surrogate - 0xD800L) * 1024L + (code - 0xDC00L)
             private$high_surrogate <- NULL
           }
-          windows_key_event(as.integer(fields[[2]]), code, as.integer(fields[[4]]))
+          windows_key_event(vk, code, mods)
         },
         M = {
-          v <- as.integer(fields[2:6])
-          events <- windows_mouse_events(v[[1]], v[[2]], v[[3]], v[[4]], v[[5]], private$buttons)
-          if (bitwAnd(v[[4]], 12L) == 0L) private$buttons <- bitwAnd(v[[3]], 0xFFFFL)
+          x <- parse_windows_integer(fields[[2]], "mouse x")
+          y <- parse_windows_integer(fields[[3]], "mouse y")
+          buttons <- parse_uint32(fields[[4]], "dwButtonState")
+          flags <- parse_uint32(fields[[5]], "dwEventFlags")
+          mods <- parse_windows_integer(fields[[6]], "modifiers", 0, 7)
+          events <- windows_mouse_events(x, y, buttons, flags, mods, private$buttons)
+          # Only the low words enter R's signed integer bitwise operations.
+          if (bitwAnd(flags %% 65536, 12L) == 0L) {
+            private$buttons <- as.integer(buttons %% 65536)
+          }
           events
         },
         E = stop("termr input helper: ", paste(fields[-1], collapse = " "), call. = FALSE),
