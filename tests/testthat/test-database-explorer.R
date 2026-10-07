@@ -123,7 +123,10 @@ test_that("SQLite preview and generated SQL quote unusual identifiers", {
 test_that("database-explorer is registered and its example handles optional packages", {
   expect_true("database-explorer" %in% run_example())
   if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("RSQLite", quietly = TRUE)) {
-    expect_s3_class(load_example("database-explorer"), "App")
+    explorer_app <- load_example("database-explorer")
+    expect_s3_class(explorer_app, "App")
+    # Starting and stopping the app closes the example's own connection.
+    test_app(explorer_app)$stop()
   } else {
     expect_message(load_example("database-explorer"), "DBI and RSQLite")
   }
