@@ -272,7 +272,7 @@ DatabaseExplorer <- R6::R6Class(
     },
     load_objects = function(type) {
       if (!self$connection$is_valid()) {
-        self$set_status("Disconnected")
+        private$set_status("Disconnected")
         return(list(tree_node("(disconnected)")))
       }
       names <- tryCatch(private$object_names(type), error = function(e) e)
@@ -313,7 +313,7 @@ DatabaseExplorer <- R6::R6Class(
             private$set_status(paste0("Unable to list ", type, "s: ", conditionMessage(e)), "error")
             character()
           })
-          names <- names[grepl(filter, names, ignore.case = TRUE, fixed = TRUE)]
+          names <- names[grepl(tolower(filter), tolower(names), fixed = TRUE)]
           child <- tree_node(title, data = list(kind = "group", type = type),
                              expanded = TRUE, id = paste0("db_", type, "s"))
           for (item in private$nodes_for_names(names, type)) child$add(item)
@@ -347,7 +347,7 @@ DatabaseExplorer <- R6::R6Class(
       fields
     },
     set_history_text = function() {
-      rows <- tail(private$.history, 8L)
+      rows <- utils::tail(private$.history, 8L)
       if (!length(rows)) {
         self$history$text <- "No queries run in this session."
       } else {
