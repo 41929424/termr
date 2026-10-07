@@ -4,7 +4,7 @@
 \alias{db_table_source}
 \title{Create a lazy source for a SQLite table}
 \usage{
-db_table_source(connection, table, own_connection = FALSE)
+db_table_source(connection, table, owned = FALSE)
 }
 \arguments{
 \item{connection}{An open RSQLite connection, or a \code{\link[=db_connection]{db_connection()}}
@@ -12,7 +12,7 @@ wrapper of one.}
 
 \item{table}{A table name or \code{DBI::Id}.}
 
-\item{own_connection}{If \code{TRUE}, \code{source$close()} disconnects this
+\item{owned}{If \code{TRUE}, \code{source$close()} disconnects this
 connection. The default leaves connection ownership with the caller.}
 }
 \value{

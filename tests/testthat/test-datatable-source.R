@@ -195,3 +195,16 @@ test_that("SQLite table sources paginate and delegate safe filters and sorts", {
   expect_true(DBI::dbIsValid(con))
 })
 
+
+test_that("db_table_source() disconnects only an owned connection", {
+  skip_if_not_installed("DBI")
+  skip_if_not_installed("RSQLite")
+  con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+  DBI::dbWriteTable(con, "items", data.frame(id = 1:3))
+  borrowed <- data_table(db_table_source(con, "items"))
+  borrowed$close()
+  expect_true(DBI::dbIsValid(con))
+  owner <- data_table(db_table_source(con, "items", owned = TRUE))
+  owner$close()
+  expect_false(DBI::dbIsValid(con))
+})
