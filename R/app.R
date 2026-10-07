@@ -661,6 +661,11 @@ App <- R6::R6Class(
     shutdown = function() {
       driver <- private$.driver
       if (is.null(driver)) return(invisible())
+      for (screen in c(self$screens, list(private$.toasts))) {
+        for (w in screen$walk()) {
+          if ("on_app_shutdown" %in% names(w) && is.function(w$on_app_shutdown)) w$on_app_shutdown()
+        }
+      }
       private$.running <- FALSE
       termr_env$apps <- Filter(function(a) !identical(a, self), termr_env$apps)
       private$.driver <- NULL

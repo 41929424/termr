@@ -81,6 +81,24 @@ jump to row, and optional cell editing on its own copy of the data.
 hundred lines (`run_example("data-explorer")`). See
 [docs/data.md](docs/data.md).
 
+For SQL workflows, `sql_editor()` adds SQL highlighting and selection-aware
+execution to `text_area()`. Database support is optional through DBI; see
+[`docs/sql.md`](docs/sql.md) and `run_example("sql-workspace")`.
+
+```r
+con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+db <- db_connection(con, owned = TRUE)
+app(
+  vertical(
+    sql_editor("SELECT * FROM mtcars LIMIT 5", connection = db, id = "query"),
+    data_table(data.frame(), id = "results")
+  ),
+  on("sql.query_completed", "#query", function(event, app) {
+    app$query_one("#results")$set_data(event$data$result)
+  })
+)
+```
+
 ## Testing
 
 `test_app()` drives the real event loop and renderer against a virtual
