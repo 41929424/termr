@@ -542,6 +542,14 @@ check_key_values <- function(data) {
 #' Shows names and values in two aligned columns, e.g. a summary of a data
 #' set.
 #'
+#' @section Choosing a key/value widget:
+#' * [key_value()]: a few known values shown in full, such as a summary
+#'   panel. Not focusable, does not scroll; values are not wrapped.
+#' * [property_grid()]: an inspector for many or arbitrary named values.
+#'   Focusable and scrollable, wraps long values, formats vectors and lists
+#'   compactly and accepts a `format` function.
+#' * [record_view()]: [property_grid()] for exactly one record, such as the
+#'   selected row of a [data_table()]; accepts a one-row data frame.
 #' @param data A named list or vector.
 #' @param id Optional identifier.
 #' @param classes Optional classes.

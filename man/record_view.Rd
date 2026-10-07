@@ -39,6 +39,19 @@ and presents it through the same renderer as \code{\link[=property_grid]{propert
 semantic convenience wrapper, not a separate rendering system. A reactive
 function may return a new record whenever its signals change.
 }
+\section{Choosing a key/value widget}{
+
+\itemize{
+\item \code{\link[=key_value]{key_value()}}: a few known values shown in full, such as a summary
+panel. Not focusable, does not scroll; values are not wrapped.
+\item \code{\link[=property_grid]{property_grid()}}: an inspector for many or arbitrary named values.
+Focusable and scrollable, wraps long values, formats vectors and lists
+compactly and accepts a \code{format} function.
+\item \code{\link[=record_view]{record_view()}}: \code{\link[=property_grid]{property_grid()}} for exactly one record, such as the
+selected row of a \code{\link[=data_table]{data_table()}}; accepts a one-row data frame.
+}
+}
+
 \examples{
 record_view(list(id = 42, name = "Alice", active = TRUE))
 }

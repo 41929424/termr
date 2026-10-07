@@ -22,6 +22,19 @@ A \code{KeyValue} widget with a reactive \code{data} field.
 Shows names and values in two aligned columns, e.g. a summary of a data
 set.
 }
+\section{Choosing a key/value widget}{
+
+\itemize{
+\item \code{\link[=key_value]{key_value()}}: a few known values shown in full, such as a summary
+panel. Not focusable, does not scroll; values are not wrapped.
+\item \code{\link[=property_grid]{property_grid()}}: an inspector for many or arbitrary named values.
+Focusable and scrollable, wraps long values, formats vectors and lists
+compactly and accepts a \code{format} function.
+\item \code{\link[=record_view]{record_view()}}: \code{\link[=property_grid]{property_grid()}} for exactly one record, such as the
+selected row of a \code{\link[=data_table]{data_table()}}; accepts a one-row data frame.
+}
+}
+
 \examples{
 render_widget(key_value(list(Rows = 32, Columns = 11, Source = "mtcars")), 20, 3)
 }

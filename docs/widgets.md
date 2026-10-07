@@ -72,6 +72,15 @@ Ctrl+Delete (words), Ctrl+U/K, Ctrl+C/X/V with the app clipboard.
 | `progress_bar(value, total)` | `NA` for indeterminate; `$advance()` |
 | `spinner(label)` | animated by a widget timer |
 
+Three widgets show names and values. Use `key_value()` for a few known
+values shown in full, such as a summary panel: it is not focusable, does not
+scroll and does not wrap. Use `property_grid()` to inspect many or arbitrary
+named values: it is focusable and scrollable, wraps long values, formats
+vectors and lists compactly and accepts a `format` function. Use
+`record_view()` for exactly one record, such as the selected row of a
+`data_table()`; it is `property_grid()` with record input (a one-row data
+frame, named list or vector).
+
 ## Dynamic trees
 
 ```r

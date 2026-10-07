@@ -239,6 +239,14 @@ PropertyGrid <- R6::R6Class(
 #' the default value formatting. `data` may be a reactive function of no
 #' arguments.
 #'
+#' @section Choosing a key/value widget:
+#' * [key_value()]: a few known values shown in full, such as a summary
+#'   panel. Not focusable, does not scroll; values are not wrapped.
+#' * [property_grid()]: an inspector for many or arbitrary named values.
+#'   Focusable and scrollable, wraps long values, formats vectors and lists
+#'   compactly and accepts a `format` function.
+#' * [record_view()]: [property_grid()] for exactly one record, such as the
+#'   selected row of a [data_table()]; accepts a one-row data frame.
 #' @param data Named list or vector; data frames are accepted as named
 #'   columns. `NULL` displays an empty grid.
 #' @param format Optional `function(name, value)` returning display text.
@@ -287,6 +295,14 @@ record_data <- function(data) {
 #' semantic convenience wrapper, not a separate rendering system. A reactive
 #' function may return a new record whenever its signals change.
 #'
+#' @section Choosing a key/value widget:
+#' * [key_value()]: a few known values shown in full, such as a summary
+#'   panel. Not focusable, does not scroll; values are not wrapped.
+#' * [property_grid()]: an inspector for many or arbitrary named values.
+#'   Focusable and scrollable, wraps long values, formats vectors and lists
+#'   compactly and accepts a `format` function.
+#' * [record_view()]: [property_grid()] for exactly one record, such as the
+#'   selected row of a [data_table()]; accepts a one-row data frame.
 #' @param data One named list, named vector, or one-row data frame. `NULL`
 #'   displays an empty view.
 #' @param format Optional `function(name, value)` formatter.
