@@ -328,6 +328,11 @@ Worker <- R6::R6Class(
 #' Temporary files (the job, the result and the progress file) have unique
 #' names and are removed when the worker ends, however it ends.
 #'
+#' The job (the function with its closure environment, and `args`) is
+#' serialized to a temporary file, and workers and programs inherit the app's
+#' environment variables: avoid putting secrets into worker closures or
+#' arguments unnecessarily.
+#'
 #' There is no worker pool: start as many workers as you need; each is an
 #' independent process. This API is **experimental**.
 #'
