@@ -179,6 +179,7 @@ test_that("SQLite table sources paginate and delegate safe filters and sorts", {
   src <- db_table_source(con, "items")
   tbl <- data_table(src, cursor = "none")
   expect_equal(tbl$row_count, 4L)
+  expect_equal(db_table_source(db_connection(con), "items")$row_count(), 4L)
   tbl$sort("name")
   expect_equal(vapply(seq_len(tbl$row_count), function(i) tbl$row_data(i)$name, ""),
                c("alpha", "beta", "delta", "gamma"))

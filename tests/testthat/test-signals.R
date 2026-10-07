@@ -260,3 +260,17 @@ test_that("a thousand signals and watchers stay fast", {
   expect_lt(elapsed, 3)
   dispose(w)
 })
+
+test_that("an interrupted batch does not leave watchers deferred", {
+  s <- signal(1)
+  seen <- 0
+  w <- watch(function() seen <<- s())
+  on.exit(dispose(w), add = TRUE)
+  intr <- structure(class = c("interrupt", "condition"), list(message = "", call = NULL))
+  tryCatch(batch(signalCondition(intr)), interrupt = function(e) NULL)
+  s(2)
+  expect_identical(seen, 2)
+  expect_error(batch(stop("boom")), "boom")
+  s(3)
+  expect_identical(seen, 3)
+})

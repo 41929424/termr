@@ -123,10 +123,7 @@ db_query_source <- function(connection, query, params = NULL, adapter = NULL) {
 }
 
 sqlite_query_adapter <- function() {
-  get_query <- function(connection, sql, params) {
-    if (is.null(params) || !length(params)) DBI::dbGetQuery(connection, sql) else
-      DBI::dbGetQuery(connection, sql, params = params)
-  }
+  get_query <- db_get_query
   quote_columns <- function(connection, columns) {
     vapply(columns, function(name) as.character(DBI::dbQuoteIdentifier(connection, name)), "")
   }

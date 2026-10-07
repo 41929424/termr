@@ -154,9 +154,12 @@ render_html <- function(x, width = 80, height = 24, color = TRUE, trim = TRUE) {
   snap <- snapshot_runs(buffer)
   by_row <- split(snap, vapply(snap, `[[`, integer(1), "y"))
   rows <- vapply(by_row, function(row) {
-    spans <- vapply(row, function(run) {
+    last <- length(row)
+    spans <- vapply(seq_along(row), function(i) {
+      run <- row[[i]]
       text <- run$text
-      if (trim) text <- sub(" +$", "", text)
+      # Only the end of the row is trimmed; inner spaces keep columns aligned.
+      if (trim && i == last) text <- sub(" +$", "", text)
       if (!nzchar(text)) return("")
       css <- run_css(run, color)
       body <- html_escape(text, attribute = TRUE)
@@ -216,7 +219,7 @@ render_svg <- function(x, width = 80, height = 24, cell_width = 9,
     pieces <- c(pieces, sprintf('<text x="%s" y="%s" style="%s">%s</text>',
       x0, y0 + font_size, paste(style, collapse = ";"), xml_escape(text)))
   }
-  paste0('<svg xmlns="http://www.w3.org/2000/svg" width="', w, '" height="', h,
+  paste0('<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="', w, '" height="', h,
     '" viewBox="0 0 ', w, ' ', h, '"><g font-family="', xml_escape(font_family, TRUE), '">',
     paste(pieces, collapse = ""), "</g></svg>")
 }

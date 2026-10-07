@@ -20,6 +20,10 @@ event loop until the app calls \code{exit()}, and restores the terminal -
 also when an error occurs or the user interrupts R.
 }
 \details{
+When the app stops, its timers, widget timers, workers and animations are
+cancelled. The same app can be run again, but timers and workers have to
+be started again (for example from a \code{"mount"} handler).
+
 termr apps need a real terminal: run them with \code{Rscript} (or an
 interactive R session) in a terminal such as Windows Terminal,
 iTerm2 or GNOME Terminal. RStudio's console is not a terminal.

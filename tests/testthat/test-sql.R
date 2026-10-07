@@ -49,7 +49,7 @@ test_that("SQL highlighter is tolerant of incomplete SQL and carries block comme
 
 test_that("SQL highlighter supports Unicode and viewport-first multiline calls", {
   fn <- sql_highlighter(dialect = "sqlite")
-  lines <- c("SELECT имя FROM таблица", "/* open", "close */ SELECT 1e10")
+  lines <- c("SELECT \u0438\u043c\u044f FROM \u0442\u0430\u0431\u043b\u0438\u0446\u0430", "/* open", "close */ SELECT 1e10")
   full <- fn(lines)
   expect_true(any(full[[1]]$token == "identifier"))
   row <- fn(lines, state = list(line = 3L, version = 1L))
@@ -99,7 +99,8 @@ test_that("DBI wrapper and SQL events work with SQLite when installed", {
   application <- app(
     editor,
     on("sql.query_started", "#query", function(event, app) events[[length(events) + 1L]] <<- event$type),
-    on("sql.query_completed", "#query", function(event, app) events[[length(events) + 1L]] <<- event$data)
+    on("sql.query_completed", "#query", function(event, app) events[[length(events) + 1L]] <<- event$data),
+    on("sql.query_failed", "#query", function(event, app) events[[length(events) + 1L]] <<- event$data)
   )
   pilot <- test_app(application, 50, 10)
   pilot$press("ctrl+enter")
@@ -109,13 +110,14 @@ test_that("DBI wrapper and SQL events work with SQLite when installed", {
   editor$set_text("SELECT * FROM missing")
   editor$execute()
   pilot$step()
-  expect_identical(events[[3]], "sql.query_failed")
+  expect_identical(events[[3]], "sql.query_started")
   expect_match(events[[4]]$message, "no such table")
 
   owned_con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
   owned <- db_connection(owned_con, owned = TRUE)
   owned_editor <- sql_editor(connection = owned)
-  owned_app <- app(owned_editor, bind("q", function(app) app$exit()))
+  owned_app <- app(owned_editor)
+  owned_app$set_timeout(0, function(app) app$exit())
   run(owned_app, driver = HeadlessDriver$new(30, 5))
   expect_false(owned$is_valid())
 })

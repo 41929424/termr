@@ -211,3 +211,18 @@ test_that("the selection is highlighted and the mouse selects", {
   x$pilot$mouse("down", 8, 2, button = "left", shift = TRUE)
   expect_identical(x$input$selection, "abcde")
 })
+
+test_that("password values stay out of print, inspection, event logs and clipboards", {
+  pw <- input("hunter2", id = "pw", password = TRUE)
+  expect_false(grepl("hunter2", pw$format(), fixed = TRUE))
+  expect_false(any(grepl("hunter2", capture.output(print(inspect_widget(pw))), fixed = TRUE)))
+  pilot <- test_app(app(pw))
+  on.exit(pilot$stop(), add = TRUE)
+  pilot$app$log_events()
+  pw$focus()
+  pw$select_range(0, 7)
+  pilot$press("ctrl+c")
+  expect_false(grepl("hunter2", pilot$app$clipboard, fixed = TRUE))
+  expect_false(any(grepl("hunter2", unlist(pilot$app$event_log()), fixed = TRUE)))
+  expect_identical(pw$value, "hunter2")
+})

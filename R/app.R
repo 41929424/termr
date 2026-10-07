@@ -861,6 +861,9 @@ App <- R6::R6Class(
 
     process_queue = function() {
       count <- 0L
+      # Events already queued (e.g. one MountEvent per widget of a large
+      # tree) are not a loop; the guard counts what handlers add on top.
+      limit <- private$.queue$size() + private$max_events_per_tick
       repeat {
         if (length(private$.later)) {
           later <- private$.later
@@ -875,7 +878,7 @@ App <- R6::R6Class(
         batch(private$dispatch(event))
         count <- count + 1L
         if (private$.exit_requested) break
-        if (count >= private$max_events_per_tick) {
+        if (count >= limit) {
           warning("termr: too many events in one tick; possible event loop.", call. = FALSE)
           break
         }
@@ -1032,11 +1035,13 @@ App <- R6::R6Class(
       self$request_repaint()
     },
 
-    widget_unmounting = function(widget) {
+    widget_unmounting = function(widget, dispose = TRUE) {
       removed <- widget$walk()
-      for (w in removed) widget_private(w)$cancel_timers()
-      for (worker in private$.workers) {
-        if (!is.null(worker$owner) && any(vapply(removed, identical, logical(1), worker$owner))) worker$cancel()
+      if (dispose) {
+        for (w in removed) widget_private(w)$cancel_timers()
+        for (worker in private$.workers) {
+          if (!is.null(worker$owner) && any(vapply(removed, identical, logical(1), worker$owner))) worker$cancel()
+        }
       }
       if (!private$.running) return(invisible())
       private$.focus$release(widget)
@@ -1210,6 +1215,10 @@ app <- function(..., bindings = list(), actions = list(), title = NULL, mouse = 
 #' Takes over the terminal (alternate screen, raw keyboard input), runs the
 #' event loop until the app calls `exit()`, and restores the terminal -
 #' also when an error occurs or the user interrupts R.
+#'
+#' When the app stops, its timers, widget timers, workers and animations are
+#' cancelled. The same app can be run again, but timers and workers have to
+#' be started again (for example from a `"mount"` handler).
 #'
 #' termr apps need a real terminal: run them with `Rscript` (or an
 #' interactive R session) in a terminal such as Windows Terminal,

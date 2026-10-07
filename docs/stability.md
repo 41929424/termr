@@ -13,7 +13,7 @@ will be called out in NEWS and migration notes.
 
 - Core app and widget construction: `app()`, `run()`, `label()`, `button()`,
   `input()`, `checkbox()`, `radio_set()`, `radio_button()`, `dropdown()`,
-  `option_list()`, `select`, `panel()`, `vertical()`, `horizontal()`,
+  `option_list()`, `panel()`, `vertical()`, `horizontal()`,
   `grid_layout()`, `scroll_view()`, `tabs()`, `tab()`, `modal()`,
   `confirm_dialog()`, `alert_dialog()`, `split_pane()`, `tree_view()`,
   `tree_node()`, and the display widgets documented in [Widgets](widgets.md).
@@ -51,8 +51,10 @@ NEWS and in [migration notes](migration-to-1.0.md).
 - Custom layout registration through `register_layout()` and
   `unregister_layout()`.
 - Lazy table sources and database support: `table_source()`,
-  `db_table_source()`, `db_connection()`, `db_metadata()`, `db_explorer()`,
-  `sql_editor()`, and SQL query events.
+  `db_table_source()`, `db_query_source()`, `db_connection()`,
+  `db_metadata()`, `db_explorer()`, `sql_editor()`, and SQL query events.
+- Workflow widgets added in 0.9: `status_bar()`, `property_grid()`,
+  `record_view()`, `data_profile()`, `json_view()` and their classes.
 - Static export and serialization: `render_markdown()`, `render_html()`,
   `render_svg()`, `snapshot_json()`, `inspect_json()`, `widget_snapshot()`,
   `screen_snapshot()`, `knit_termr()`, and `write_rendered()`.
@@ -74,6 +76,34 @@ with `termr:::` or rely on their implementation details. See the
 S3 methods registered in `NAMESPACE` are public only through their documented
 generic behavior; their implementation names are not separate extension
 points.
+
+## Versioning after 1.0
+
+termr follows semantic versioning from 1.0.0 on:
+
+- **Patch releases** (1.0.x) fix bugs. They change behavior only where it
+  contradicted the documentation.
+- **Minor releases** (1.x.0) add features. Stable APIs keep working; a stable
+  API that must go is first deprecated: it keeps working and warns (once per
+  session) for at least one minor release and six months, and NEWS names its
+  replacement.
+- **Major releases** (2.0.0) may remove deprecated or change stable APIs.
+
+Experimental APIs are excluded: they may change in a minor release, with a
+NEWS entry, and without a deprecation period when one is impractical. An
+experimental API becomes stable by being moved to the stable list here.
+
+Event names and the fields of `event$data` documented for stable widgets are
+part of the stable API, as are the documented key bindings and command names.
+
+Snapshot formats carry a `schema_version`. Adding fields does not change it;
+renaming, removing or re-typing a field increments it, in a minor release at
+the earliest, and is listed in NEWS. Consumers should ignore unknown fields.
+
+Extension points (custom widgets, layouts, themes, highlighters, table
+sources and database adapters) are experimental for 1.0. Extensions should
+use only exported functions and documented callback contracts; anything
+reached with `termr:::` can change in any release.
 
 ## Naming and aliases
 

@@ -1140,16 +1140,23 @@ DataTable <- R6::R6Class(
       if (!length(rows)) return(private$empty_source_data(columns))
       n <- private$source_row_count()
       if (anyNA(rows) || any(rows < 1L | rows > n)) stop("A table source row request is out of range.", call. = FALSE)
+      # Pages always hold every source column, so painting several columns
+      # of the same rows costs one source call per page, not one per column.
       chunk <- 100L
-      ids <- (as.integer(rows) - 1L) %/% chunk
-      pieces <- vector("list", length(rows))
+      rows <- as.integer(rows)
+      all_columns <- names(private$.data)
+      ids <- (rows - 1L) %/% chunk
+      pieces <- list()
+      order_at <- integer()
       for (id in unique(ids)) {
         at <- which(ids == id)
         start <- id * chunk + 1L
-        page <- private$get_source_page(start, min(chunk, n - start + 1L), columns)
-        pieces[at] <- lapply(match(rows[at], seq.int(start, length.out = nrow(page))), function(i) page[i, , drop = FALSE])
+        page <- private$get_source_page(start, min(chunk, n - start + 1L), all_columns)
+        pieces[[length(pieces) + 1L]] <- page[rows[at] - start + 1L, columns, drop = FALSE]
+        order_at <- c(order_at, at)
       }
       out <- do.call(rbind, pieces)
+      out <- out[order(order_at), , drop = FALSE]
       row.names(out) <- NULL
       out
     },

@@ -44,6 +44,11 @@ test_that("database explorer loads metadata lazily and previews SQLite tables", 
   filtered <- explorer$objects$root$find("db_tables")
   expect_true(filtered$expanded)
   expect_identical(vapply(filtered$children, `[[`, "", "label"), "mtcars")
+  # The object filter ignores case.
+  explorer$object_search$value <- "MTC"
+  expect_no_warning(pilot$step())
+  filtered <- explorer$objects$root$find("db_tables")
+  expect_identical(vapply(filtered$children, `[[`, "", "label"), "mtcars")
   explorer$object_search$value <- ""
   pilot$step()
 

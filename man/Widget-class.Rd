@@ -366,7 +366,8 @@ events and events bubbling up from descendants).
     \describe{
       \item{\code{type}}{Event type, or \code{"*"} for all.}
       \item{\code{handler}}{\verb{function(event, app)}.}
-      \item{\code{selector}}{Optional selector matched against the event sender.}
+      \item{\code{selector}}{Optional selector matched against the event sender.
+The order of \code{\link[=on]{on()}} / \code{app$on()}, \code{widget$on(type, selector, handler)}, is accepted too.}
     }
     \if{html}{\out{</div>}}
   }

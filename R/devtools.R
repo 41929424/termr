@@ -29,6 +29,7 @@ inspect_widget <- function(x, selector = NULL) {
     }
   }
   state <- as.list(widget_private(widget)$.state)
+  if (isTRUE(widget$password) && !is.null(state$value)) state$value <- "<hidden>"
   structure(
     list(
       type = widget$type,

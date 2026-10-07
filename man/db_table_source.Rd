@@ -7,7 +7,8 @@
 db_table_source(connection, table, own_connection = FALSE)
 }
 \arguments{
-\item{connection}{An open DBI connection created by RSQLite.}
+\item{connection}{An open RSQLite connection, or a \code{\link[=db_connection]{db_connection()}}
+wrapper of one.}
 
 \item{table}{A table name or \code{DBI::Id}.}
 

@@ -1,8 +1,8 @@
 test_that("plain text exports use the static framebuffer and trim only row tails", {
-  ui <- label("a  界", style = style(foreground = "red"))
-  expect_identical(render_text(ui, width = 8, height = 2), "a  界\n")
-  expect_identical(render_lines(ui, width = 8, height = 2, trim = FALSE)[[1]], "a  界   ")
-  expect_identical(render_lines(ui, width = 8, height = 2)[[1]], "a  界")
+  ui <- label("a  \u754c", style = style(foreground = "red"))
+  expect_identical(render_text(ui, width = 8, height = 2), "a  \u754c\n")
+  expect_identical(render_lines(ui, width = 8, height = 2, trim = FALSE)[[1]], "a  \u754c   ")
+  expect_identical(render_lines(ui, width = 8, height = 2)[[1]], "a  \u754c")
   expect_identical(render_text(ui, width = 8, height = 2), render_text(ui, width = 8, height = 2))
 })
 
@@ -70,4 +70,11 @@ test_that("static exporters accept a ScreenBuffer and writer writes expected tex
   path <- tempfile()
   write_rendered(buf, path, "text")
   expect_identical(readLines(path, warn = FALSE), "yes")
+})
+
+test_that("HTML export keeps inner spaces and SVG preserves whitespace", {
+  w <- horizontal(label("ab", style = style(width = 6)), label("cd", style = style(foreground = "red")))
+  html <- render_html(w, 12, 1)
+  expect_match(html, "ab {4}<")
+  expect_match(render_svg(label("a   b"), 10, 1), 'xml:space="preserve"', fixed = TRUE)
 })

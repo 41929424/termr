@@ -13,7 +13,7 @@ if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("RSQLite", quiet
   DBI::dbWriteTable(con, "mtcars", mtcars)
   db <- db_connection(con, name = "SQLite (in memory)", owned = TRUE)
   initial <- db$query("SELECT * FROM mtcars WHERE mpg > 20 LIMIT 5")
-  message <- "Ready · Ctrl+Enter runs the selected SQL or the full buffer."
+  message <- "Ready \u00b7 Ctrl+Enter runs the selected SQL or the full buffer."
 }
 
 results <- data_table(initial, id = "results", cursor = "none", zebra = TRUE)
@@ -32,11 +32,11 @@ run(app(
     style = style(padding = 1)
   ),
   on("sql.query_started", "#query", function(event, app) {
-    app$query_one("#sql-status")$update("Running query…")
+    app$query_one("#sql-status")$update("Running query\u2026")
   }),
   on("sql.query_completed", "#query", function(event, app) {
     app$query_one("#results")$set_data(event$data$result)
-    app$query_one("#sql-status")$update(sprintf("%d rows · %.1f ms", event$data$rows, event$data$elapsed_ms))
+    app$query_one("#sql-status")$update(sprintf("%d rows \u00b7 %.1f ms", event$data$rows, event$data$elapsed_ms))
   }),
   on("sql.query_failed", "#query", function(event, app) {
     app$query_one("#sql-status")$update(paste("SQL error:", event$data$message))

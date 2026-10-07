@@ -172,7 +172,8 @@ Input <- R6::R6Class(
     copy = function(system = TRUE) {
       sel <- private$selected_indices()
       app <- self$app
-      if (length(sel) && !is.null(app)) {
+      # Password fields never copy their value to a clipboard.
+      if (length(sel) && !is.null(app) && !isTRUE(self$password)) {
         chars <- input_chars(private$.state$value)
         app$clipboard_write(paste(chars[sel], collapse = ""), system = system)
       }
@@ -433,7 +434,11 @@ Input <- R6::R6Class(
       text_lines(c(span(first, style(reverse = TRUE)), span(rest, hint)))
     },
 
-    describe = function() encodeString(private$.state$value, quote = "\"")
+    describe = function() {
+      # print(), the event log and the debug overlay must not reveal a password.
+      if (isTRUE(self$password)) return(if (nzchar(private$.state$value)) "<hidden>" else "\"\"")
+      encodeString(private$.state$value, quote = "\"")
+    }
   )
 )
 

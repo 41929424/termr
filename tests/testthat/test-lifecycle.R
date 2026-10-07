@@ -130,3 +130,39 @@ test_that("a stopped app can be collected", {
   expect_true(collected)
   expect_identical(current_app(), current)
 })
+
+test_that("the event-loop guard ignores queued lifecycle events but stops real loops", {
+  big <- app(vertical(lapply(1:60, function(i) label(paste("row", i)))))
+  big$.__enclos_env__$private$max_events_per_tick <- 20L
+  expect_no_warning(pilot <- test_app(big))
+  pilot$stop()
+
+  looping <- app(
+    label("x", id = "x"),
+    on("ping", function(event, app) app$post_message("ping"))
+  )
+  looping$.__enclos_env__$private$max_events_per_tick <- 20L
+  pilot <- test_app(looping)
+  on.exit(pilot$stop(), add = TRUE)
+  looping$post_message("ping")
+  expect_warning(pilot$step(), "too many events")
+})
+
+test_that("an app can run twice; stopping it cancels its timers", {
+  a <- app(label("hello", id = "x"))
+  ticks <- 0
+  a$set_interval(1, function(app) ticks <<- ticks + 1)
+  a$set_timeout(2.5, function(app) app$exit("first"))
+  expect_identical(run(a, driver = HeadlessDriver$new(20, 3)), "first")
+  expect_gte(ticks, 2)
+  before <- ticks
+  seen <- FALSE
+  d <- HeadlessDriver$new(20, 3)
+  a$set_timeout(1.5, function(app) {
+    seen <<- any(grepl("hello", d$screen_text()))
+    app$exit("second")
+  })
+  expect_identical(run(a, driver = d), "second")
+  expect_true(seen)
+  expect_identical(ticks, before)
+})
