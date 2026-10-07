@@ -17,7 +17,7 @@ test_that("status bar lays out three regions and truncates to terminal cells", {
     out <- render_widget(status_bar("left side", "middle", "right side"), width, 1L)$to_text()
     expect_equal(str_width(out[[1L]]), width)
   }
-  expect_no_error(render_widget(status_bar("界🙂 e\u0301", "中", "右"), 3, 1))
+  expect_no_error(render_widget(status_bar("\u754c\U0001f642 e\u0301", "\u4e2d", "\u53f3"), 3, 1))
 })
 
 test_that("status bar reactive regions update in headless high contrast mode", {
