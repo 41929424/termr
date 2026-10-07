@@ -198,3 +198,23 @@ test_that("parent and child pointers stay consistent under random edits", {
     }
   }
 })
+
+test_that("moving a widget keeps its reactive bindings; removing it ends them", {
+  s <- signal("x")
+  l <- label("")
+  l$bind_reactive("text", function() s())
+  a <- vertical(l)
+  b <- vertical()
+  pilot <- test_app(app(a, b))
+  on.exit(pilot$stop(), add = TRUE)
+  ticks <- 0L
+  l$set_interval(1, function(w, app) ticks <<- ticks + 1L)
+  b$mount(l)
+  s("moved")
+  expect_identical(l$text, "moved")
+  pilot$advance(1.5)
+  expect_gte(ticks, 1L)
+  l$remove()
+  s("removed")
+  expect_identical(l$text, "moved")
+})

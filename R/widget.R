@@ -111,7 +111,9 @@ Widget <- R6::R6Class(
           if (identical(w$parent, self) && match(TRUE, vapply(private$.children, identical, logical(1), w)) <= position) {
             position <- position - 1L
           }
-          w$remove()
+          # A move inside the same app keeps the widget's reactive bindings,
+          # timers and workers; they end only when it is removed.
+          widget_private(w)$detach(dispose = !identical(w$app, self$app))
         }
         wp <- widget_private(w)
         wp$.parent <- self
@@ -137,21 +139,7 @@ Widget <- R6::R6Class(
     clear = function() self$remove_children(),
 
     #' @description Detach this widget (and its children) from its parent.
-    remove = function() {
-      parent <- private$.parent
-      if (is.null(parent)) return(invisible(self))
-      for (w in self$walk()) widget_private(w)$dispose_bindings()
-      app <- self$app
-      if (!is.null(app)) app$.__enclos_env__$private$widget_unmounting(self)
-      pp <- widget_private(parent)
-      keep <- !vapply(pp$.children, identical, logical(1), self)
-      pp$.children <- pp$.children[keep]
-      private$.parent <- NULL
-      clear_regions(self)
-      bump_epoch()
-      parent$invalidate()
-      invisible(self)
-    },
+    remove = function() private$detach(dispose = TRUE),
 
     #' @description Remove all children.
     remove_children = function() {
@@ -705,6 +693,24 @@ Widget <- R6::R6Class(
         style_layout_signature(st)
       }
       identical(sig(a), sig(b))
+    },
+
+    # Detach from the parent. `dispose = FALSE` (a move within the same app)
+    # keeps reactive bindings, timers and owned workers.
+    detach = function(dispose = TRUE) {
+      parent <- private$.parent
+      if (is.null(parent)) return(invisible(self))
+      if (dispose) for (w in self$walk()) widget_private(w)$dispose_bindings()
+      app <- self$app
+      if (!is.null(app)) app$.__enclos_env__$private$widget_unmounting(self, dispose = dispose)
+      pp <- widget_private(parent)
+      keep <- !vapply(pp$.children, identical, logical(1), self)
+      pp$.children <- pp$.children[keep]
+      private$.parent <- NULL
+      clear_regions(self)
+      bump_epoch()
+      parent$invalidate()
+      invisible(self)
     },
 
     dispose_bindings = function() {

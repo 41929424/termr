@@ -1032,11 +1032,13 @@ App <- R6::R6Class(
       self$request_repaint()
     },
 
-    widget_unmounting = function(widget) {
+    widget_unmounting = function(widget, dispose = TRUE) {
       removed <- widget$walk()
-      for (w in removed) widget_private(w)$cancel_timers()
-      for (worker in private$.workers) {
-        if (!is.null(worker$owner) && any(vapply(removed, identical, logical(1), worker$owner))) worker$cancel()
+      if (dispose) {
+        for (w in removed) widget_private(w)$cancel_timers()
+        for (worker in private$.workers) {
+          if (!is.null(worker$owner) && any(vapply(removed, identical, logical(1), worker$owner))) worker$cancel()
+        }
       }
       if (!private$.running) return(invisible())
       private$.focus$release(widget)
