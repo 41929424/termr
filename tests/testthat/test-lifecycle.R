@@ -147,3 +147,22 @@ test_that("the event-loop guard ignores queued lifecycle events but stops real l
   looping$post_message("ping")
   expect_warning(pilot$step(), "too many events")
 })
+
+test_that("an app can run twice; stopping it cancels its timers", {
+  a <- app(label("hello", id = "x"))
+  ticks <- 0
+  a$set_interval(1, function(app) ticks <<- ticks + 1)
+  a$set_timeout(2.5, function(app) app$exit("first"))
+  expect_identical(run(a, driver = HeadlessDriver$new(20, 3)), "first")
+  expect_gte(ticks, 2)
+  before <- ticks
+  seen <- FALSE
+  d <- HeadlessDriver$new(20, 3)
+  a$set_timeout(1.5, function(app) {
+    seen <<- any(grepl("hello", d$screen_text()))
+    app$exit("second")
+  })
+  expect_identical(run(a, driver = d), "second")
+  expect_true(seen)
+  expect_identical(ticks, before)
+})
