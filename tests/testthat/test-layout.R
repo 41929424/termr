@@ -101,3 +101,21 @@ test_that("custom layout registration is namespaced and removable", {
   expect_true(unregister_layout("custom_stack"))
   expect_error(style(layout = "custom_stack"), "must be one of")
 })
+
+test_that("register_layout(replace = TRUE) replaces a custom layout on purpose", {
+  measure <- function(children, parent_style) list(width = function() 1L, height = function(width) length(children))
+  one_row <- function(children, inner, parent_style) {
+    lapply(seq_along(children), function(i) region(inner$x, inner$y + i - 1L, inner$width, 1L))
+  }
+  two_rows <- function(children, inner, parent_style) {
+    lapply(seq_along(children), function(i) region(inner$x, inner$y + 2L * (i - 1L), inner$width, 1L))
+  }
+  register_layout("custom_reload", one_row, measure)
+  on.exit(unregister_layout("custom_reload"), add = TRUE)
+  expect_error(register_layout("custom_reload", two_rows, measure), "replace = TRUE")
+  expect_identical(register_layout("custom_reload", two_rows, measure, replace = TRUE), "custom_reload")
+  box <- vertical(label("a"), label("b"), style = style(layout = "custom_reload"))
+  expect_identical(render_lines(box, 3, 3), c("a", "", "b"))
+  expect_error(register_layout("vertical", one_row, measure, replace = TRUE), "custom_")
+  expect_error(register_layout("custom_reload", one_row, measure, replace = NA), "replace")
+})

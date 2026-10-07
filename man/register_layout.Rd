@@ -4,7 +4,7 @@
 \alias{register_layout}
 \title{Register an experimental custom container layout}
 \usage{
-register_layout(name, arrange, measure)
+register_layout(name, arrange, measure, replace = FALSE)
 }
 \arguments{
 \item{name}{A unique \code{custom_} name.}
@@ -14,6 +14,11 @@ register_layout(name, arrange, measure)
 
 \item{measure}{\verb{function(children, parent_style)} returning \code{width()} and
 \code{height(width)} functions.}
+
+\item{replace}{Replace an existing registration of \code{name}? Packages that
+register in \code{.onLoad()} can pass \code{TRUE} so that reloading them works.
+Built-in layouts can never be replaced (their names do not start with
+\code{custom_}).}
 }
 \value{
 The registered name, invisibly.

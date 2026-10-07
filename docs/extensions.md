@@ -67,9 +67,12 @@ container <- termr::vertical(
 )
 ```
 
-Remove a registration when an extension unloads with
-`termr::unregister_layout("custom_stack")`. Registration and removal are
-experimental; registrations are process-wide and names must be unique.
+Registrations are process-wide and names must be unique: registering a name
+twice is an error unless `replace = TRUE` is passed. A package that registers
+in `.onLoad()` should pass `replace = TRUE`, so that reloading it works, and
+remove the registration in `.onUnload()` with
+`termr::unregister_layout("custom_stack")`. Built-in layouts cannot be
+replaced. Registration and removal are experimental.
 
 ## Themes
 
