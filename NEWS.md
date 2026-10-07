@@ -1,3 +1,14 @@
+# termr 0.5.0 (development)
+
+## SQL workflows
+
+* Added `sql_highlighter()` and the `sql_editor()` text-area subclass with
+  selection-aware synchronous query or execute mode and SQL result events.
+* Added the optional DBI-backed `db_connection()` wrapper and the
+  `sql-workspace` example. DBI and RSQLite are suggested dependencies only.
+* Database results are currently materialized in memory; async query execution
+  and schema browsing are not included.
+
 # termr 0.3.0
 
 The package was renamed from retui to termr during 0.3 development (no

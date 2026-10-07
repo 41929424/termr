@@ -65,6 +65,7 @@ TextArea <- R6::R6Class(
       self$highlighter <- highlighter
       self$validate <- validate
       private$.buf <- TextBuffer$new(value, self$tab_size)
+      private$.highlight_from <- 1L
       private$.undo <- UndoStack$new(max_entries = check_count(max_history, "max_history"))
       private$.wrap_cache <- new.env(parent = emptyenv())
       private$.highlight_cache <- new.env(parent = emptyenv())
@@ -214,6 +215,7 @@ TextArea <- R6::R6Class(
     #' @param text A string (or character vector of lines).
     set_text = function(text) {
       private$.buf$set_text(text)
+      private$.highlight_from <- 1L
       private$.undo$clear()
       private$.state$cursor_row <- 1L
       private$.state$cursor_col <- 0L
@@ -298,6 +300,7 @@ TextArea <- R6::R6Class(
     undo = function() {
       edit <- private$.undo$undo(private$.buf)
       if (is.null(edit)) return(invisible(FALSE))
+      private$.highlight_from <- edit$first_row
       private$restore_cursor(edit$before)
       invisible(TRUE)
     },
@@ -306,6 +309,7 @@ TextArea <- R6::R6Class(
     redo = function() {
       edit <- private$.undo$redo(private$.buf)
       if (is.null(edit)) return(invisible(FALSE))
+      private$.highlight_from <- edit$first_row
       private$restore_cursor(edit$after)
       invisible(TRUE)
     },
@@ -646,6 +650,7 @@ TextArea <- R6::R6Class(
     .match_cache = NULL,
     .maxw_cache = NULL,
     .highlight_cache = NULL,
+    .highlight_from = 1L,
 
     # Positions --------------------------------------------------------------
 
@@ -673,7 +678,14 @@ TextArea <- R6::R6Class(
       if (is.null(self$highlighter)) return(empty)
       key <- paste(private$.buf$version, row, sep = ":")
       if (exists(key, private$.highlight_cache, inherits = FALSE)) return(get(key, private$.highlight_cache))
-      raw <- self$highlighter(private$.buf$lines[[row]], state = list(language = self$language, line = row))
+      contextual <- isTRUE(attr(self$highlighter, "termr.contextual", exact = TRUE))
+      raw <- if (contextual) {
+        self$highlighter(private$.buf$lines,
+                         state = list(language = self$language, line = row, version = private$.buf$version,
+                                      changed_from = private$.highlight_from))
+      } else {
+        self$highlighter(private$.buf$lines[[row]], state = list(language = self$language, line = row))
+      }
       if (is.list(raw) && !is.data.frame(raw)) raw <- raw[[1L]]
       if (is.null(raw)) raw <- empty
       if (!is.data.frame(raw) || !all(c("start", "end", "token") %in% names(raw))) {
@@ -684,7 +696,8 @@ TextArea <- R6::R6Class(
           anyNA(raw$start) || anyNA(raw$end) || anyNA(raw$token) || any(raw$start != floor(raw$start)) ||
           any(raw$end != floor(raw$end)) || any(raw$start < 1L | raw$end < raw$start) ||
           any(raw$end > length(split_graphemes(private$.buf$lines[[row]]))) ||
-          any(!raw$token %in% c("keyword", "string", "comment", "number", "constant", "operator", "function")))) {
+          any(!raw$token %in% c("keyword", "string", "comment", "number", "constant", "operator", "function",
+                               "identifier", "punctuation", "parameter", "quoted_identifier")))) {
         stop("Highlighter spans must use valid grapheme ranges and known token names.", call. = FALSE)
       }
       assign(key, raw, private$.highlight_cache)
@@ -1058,6 +1071,7 @@ TextArea <- R6::R6Class(
       st$anchor_col <- NA_integer_
       private$.state <- st
       private$.want_x <- NA_integer_
+      private$.highlight_from <- res$first_row
       private$changed()
       invisible(TRUE)
     },
@@ -1303,6 +1317,10 @@ TextArea <- R6::R6Class(
         syntax_constant = resolve_style(style(foreground = "magenta", bold = TRUE), parent = st),
         syntax_operator = resolve_style(style(foreground = "yellow"), parent = st),
         syntax_function = resolve_style(style(foreground = "cyan", bold = TRUE), parent = st),
+        syntax_identifier = resolve_style(style(foreground = "white"), parent = st),
+        syntax_punctuation = resolve_style(style(foreground = "$muted"), parent = st),
+        syntax_parameter = resolve_style(style(foreground = "magenta"), parent = st),
+        syntax_quoted_identifier = resolve_style(style(foreground = "cyan", underline = TRUE), parent = st),
         placeholder = resolve_style(style(foreground = "$muted", italic = TRUE), parent = st)
       )
       x0 <- g$inner$x + g$gutter
