@@ -1,4 +1,13 @@
-# termr 0.5.0 (development)
+# termr 0.7.0 (development)
+
+## Database workflows
+
+* Added `db_explorer()` with lazy DBI metadata browsing, SQLite table/view
+  browsing and lazy table previews, integrated SQL execution and result
+  tables, details, status, and in-memory query history.
+* Added `db_metadata()` as a small portable metadata interface. DBI and
+  RSQLite remain optional dependencies; SQL query results are materialized
+  and generic DBI query execution is synchronous.
 
 ## SQL workflows
 

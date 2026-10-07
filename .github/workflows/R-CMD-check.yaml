@@ -1,6 +1,6 @@
 on:
   push:
-    branches: [main, master, develop-0.2, develop-0.3, develop-0.4, develop-0.5]
+    branches: [main, master, develop-0.2, develop-0.3, develop-0.4, develop-0.5, develop-0.6, develop-0.7]
   pull_request:
 
 name: R-CMD-check
@@ -61,11 +61,11 @@ jobs:
             any::DBI
             any::RSQLite
           needs: check
-      - name: Verify optional database dependencies and run SQL tests
+      - name: Verify optional database dependencies and run integration tests
         run: >-
           Rscript -e "stopifnot(requireNamespace('DBI', quietly = TRUE),
           requireNamespace('RSQLite', quietly = TRUE));
-          testthat::test_local(filter = 'sql', reporter = 'summary')"
+          testthat::test_local(filter = 'sql|datatable-source|database-explorer', reporter = 'summary')"
 
   pty:
     # Drives the Unix terminal driver in a real pseudo terminal.

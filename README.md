@@ -85,6 +85,11 @@ For SQL workflows, `sql_editor()` adds SQL highlighting and selection-aware
 execution to `text_area()`. Database support is optional through DBI; see
 [`docs/sql.md`](docs/sql.md) and `run_example("sql-workspace")`.
 
+`db_explorer()` combines a lazy SQLite table browser and preview with the SQL
+editor, query results, and session-only history. DBI and RSQLite are optional;
+see [`docs/database-explorer.md`](docs/database-explorer.md) and
+`run_example("database-explorer")`.
+
 ```r
 con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
 db <- db_connection(con, owned = TRUE)

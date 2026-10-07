@@ -96,6 +96,9 @@ depend on the host and can be zero at the Windows timer's resolution.
   Column widths come from a sample (first and last 500 rows plus the visible
   rows), search scans in chunks, sorting uses `order()` once per sort.
   Construction of a 1,000,000-row table takes tens of milliseconds.
+  An experimental `table_source()` can fetch only visible source chunks and
+  jump directly to a row; sorting, filtering and search require backend
+  callbacks. See [Lazy table sources](data-sources.md).
 * `tree_view()` flattens only expanded nodes; lazy nodes load on expand.
 * `log_view()` keeps a bounded number of lines.
 * `text_area()` stores lines (not one big string), edits touch the affected
@@ -106,6 +109,7 @@ depend on the host and can be zero at the Windows timer's resolution.
 ```sh
 Rscript tools/bench/bench.R                  # all scenarios
 Rscript tools/bench/bench.R datatable        # a subset
+Rscript tools/bench/datatable-source.R       # source fetch and cache counters
 Rscript tools/bench/compare.R 87b846b HEAD   # compare git revisions
 ```
 

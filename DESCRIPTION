@@ -1,6 +1,6 @@
 Package: termr
 Title: Modern Reactive Terminal Applications with Data Workflows
-Version: 0.5.0.9000
+Version: 0.7.0.9000
 Authors@R:
     person("termr", "authors", email = "akimm7926@gmail.com",
            role = c("aut", "cre"))

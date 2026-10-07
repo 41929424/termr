@@ -5,10 +5,10 @@
 # data. Column widths are estimated once from a sample (the first and last
 # rows), never from the whole column.
 #
-# The table shows a *view* of the data: an integer vector of row indices
-# (all rows by default). sort() and filter() replace the view; the cursor
-# and the scroll offsets are positions in the view. Events report both the
-# position and the original row number.
+# For data frames the table stores a view as row indices (all rows by
+# default). A lazy source owns its current ordered/filtered view and DataTable
+# uses positions into it. The cursor and scroll offsets are view positions.
+# Events report both the position and the data-frame row number or source key.
 
 #' Column options for data tables
 #'
@@ -82,7 +82,7 @@ table_filter <- function(type = c("equals", "contains", "regex", "range", "missi
 }
 
 #' @title DataTable widget
-#' @description A virtualised table for data frames. See [data_table()].
+#' @description A virtualised table for data frames or lazy table sources. See [data_table()].
 #' @rdname DataTable-class
 #' @export
 DataTable <- R6::R6Class(
@@ -100,7 +100,7 @@ DataTable <- R6::R6Class(
     #' @field zebra Stripe alternate rows?
     zebra = FALSE,
     #' @field row_style `NULL` or `function(row, data)` returning a style for
-    #'   a data row (`row` is the original row number).
+    #'   a data row (`row` is the original row number or source position).
     row_style = NULL,
     #' @field cell_style `NULL` or `function(value, row, column)` returning a
     #'   style for a cell.
@@ -119,7 +119,7 @@ DataTable <- R6::R6Class(
     on_edit = NULL,
 
     #' @description Create a table. See [data_table()].
-    #' @param data A data frame or matrix.
+    #' @param data A data frame, matrix, or [table_source()].
     #' @param cursor Cursor type.
     #' @param columns Named list of [column()] options.
     #' @param formatters Named list of formatter functions.
@@ -191,10 +191,36 @@ DataTable <- R6::R6Class(
     },
 
     #' @description Replace the data. Resets the view, cursor and scroll.
-    #' @param data A data frame or matrix.
+    #' @param data A data frame, matrix, or [table_source()].
     set_data = function(data) {
-      data <- as_table_data(data)
       opts <- private$.options
+      if (is_table_source(data)) {
+        private$.source <- data
+        private$.source_closed <- FALSE
+        private$.source_cache <- new.env(parent = emptyenv())
+        private$.source_lru <- character()
+        private$.source_stats <- new.env(parent = emptyenv())
+        private$.source_stats$fetch_calls <- 0L
+        private$.source_stats$rows_requested <- 0L
+        private$.source_stats$cache_hits <- 0L
+        private$.source_stats$cache_misses <- 0L
+        private$.source_stats$rows_rendered <- 0L
+        private$.source_stats$cells_rendered <- 0L
+        names_data <- private$source_column_names()
+        n <- private$source_row_count()
+        seed <- if (n) private$get_source_page(1L, min(100L, n), names_data) else
+          private$get_source_page(1L, 0L, names_data)
+        data <- seed[integer(), , drop = FALSE]
+        private$.source_schema <- seed
+      } else {
+        data <- as_table_data(data)
+        names_data <- names(data)
+        private$.source <- NULL
+        private$.source_closed <- FALSE
+        private$.source_cache <- NULL
+        private$.source_lru <- character()
+        private$.source_schema <- NULL
+      }
       unknown <- setdiff(c(names(opts$columns), names(opts$formatters)), names(data))
       if (length(unknown)) {
         stop(sprintf("Unknown column \"%s\" in data_table() options.", unknown[[1]]), call. = FALSE)
@@ -209,15 +235,53 @@ DataTable <- R6::R6Class(
       private$.sort <- NULL
       private$.find <- NULL
       private$.find_hit <- NULL
-      private$.specs <- lapply(names(data), function(name) table_column_spec(data[[name]], name, opts))
-      show_rn <- if (is.na(opts$row_names)) .row_names_info(data) > 0L else opts$row_names
-      private$.row_names <- if (show_rn) table_row_name_spec(data) else NULL
+      spec_data <- if (is_table_source(private$.source)) private$.source_schema else data
+      private$.specs <- lapply(names_data %||% names(data), function(name) table_column_spec(spec_data[[name]], name, opts))
+      if (is_table_source(private$.source) && is.null(private$.source$sort)) {
+        for (i in seq_along(private$.specs)) private$.specs[[i]]$sortable <- FALSE
+      }
+      show_rn <- if (is_table_source(private$.source)) isTRUE(opts$row_names) else if (is.na(opts$row_names)) .row_names_info(data) > 0L else opts$row_names
+      private$.row_names <- if (!show_rn) NULL else if (is_table_source(private$.source)) {
+        list(auto = TRUE, width = as.integer(max(1L, nchar(as.character(private$source_row_count())))))
+      } else table_row_name_spec(data)
       private$.state$offset_row <- 0L
       private$.state$offset_col <- 0L
-      private$.state$cursor_row <- if (self$cursor_type != "none" && nrow(data) > 0L) 1L else 0L
+      n <- private$row_count_data()
+      private$.state$cursor_row <- if (self$cursor_type != "none" && n > 0L) 1L else 0L
       private$.state$cursor_col <- if (self$cursor_type == "cell" && ncol(data) > 0L) 1L else 0L
       self$invalidate()
       invisible(self)
+    },
+
+    #' @description Re-read the source row count and clear cached rows.
+    refresh = function() {
+      if (!is_table_source(private$.source)) {
+        self$invalidate()
+        return(invisible(self))
+      }
+      if (private$.source_closed) stop("This table source is closed.", call. = FALSE)
+      if (!is.null(private$.source$refresh)) private$.source$refresh()
+      if (!is.null(private$.source$filter)) private$.source$filter(NULL)
+      if (!is.null(private$.source$sort)) private$.source$sort(NULL)
+      self$set_data(private$.source)
+      invisible(self)
+    },
+
+    #' @description Explicitly close this table's source resource.
+    close = function() {
+      if (is_table_source(private$.source) && !private$.source_closed) {
+        if (!is.null(private$.source$close)) private$.source$close()
+        private$.source_closed <- TRUE
+        private$clear_source_cache()
+      }
+      invisible(self)
+    },
+
+    #' @description Read structural fetch/cache counters for diagnostics.
+    source_stats = function() {
+      if (!is_table_source(private$.source)) return(list(fetch_calls = 0L, rows_requested = 0L,
+        cache_hits = 0L, cache_misses = 0L, rows_rendered = 0L, cells_rendered = 0L))
+      as.list.environment(private$.source_stats, all.names = TRUE)
     },
 
     #' @description Sort the view by one or more columns (stable; `NA`s
@@ -227,6 +291,9 @@ DataTable <- R6::R6Class(
     #' @param decreasing Sort in decreasing order? One value, or one per
     #'   column.
     sort = function(by, decreasing = FALSE) {
+      if (is_table_source(private$.source) && is.null(private$.source$sort)) {
+        stop("Sorting is not supported by this table source.", call. = FALSE)
+      }
       js <- vapply(as.list(by), private$column_index, 1L)
       decreasing <- rep_len(as.logical(decreasing), length(js))
       if (anyNA(decreasing)) stop("`decreasing` must be TRUE or FALSE.", call. = FALSE)
@@ -270,6 +337,13 @@ DataTable <- R6::R6Class(
     #' @param rows Row numbers of the data, a logical vector over the rows,
     #'   or `NULL` for all rows.
     filter = function(rows = NULL) {
+      if (is_table_source(private$.source)) {
+        if (is.null(private$.source$filter)) stop("Row filtering is not supported by this table source.", call. = FALSE)
+        if (!is.null(rows)) stop("Position filters are unavailable for lazy sources; use `filter_columns()`.", call. = FALSE)
+        private$.base_view <- NULL
+        private$apply_sort(announce = FALSE)
+        return(invisible(self))
+      }
       n <- nrow(private$.data)
       if (is.logical(rows)) {
         if (length(rows) != n) stop("A logical filter must have one value per row.", call. = FALSE)
@@ -288,6 +362,26 @@ DataTable <- R6::R6Class(
     #'   `table_filter()` or `function(values) logical`.
     #' @param filters Named list by column; `NULL` clears column filters.
     filter_columns = function(filters = NULL) {
+      if (is_table_source(private$.source)) {
+        if (is.null(private$.source$filter)) stop("Filtering is not supported by this table source.", call. = FALSE)
+        if (!is.null(filters)) {
+          filters <- check_named_list(filters, "filters")
+          unknown <- setdiff(names(filters), private$source_column_names())
+          if (length(unknown)) stop(sprintf("Unknown filter column \"%s\".", unknown[[1L]]), call. = FALSE)
+        }
+        result <- private$.source$filter(filters)
+        if (identical(result, FALSE)) stop("The table source rejected the filter.", call. = FALSE)
+        private$.filters <- filters %||% list()
+        if (!is.null(private$.sort)) {
+          sorted <- private$.source$sort(list(columns = names(private$.data)[private$.sort$columns],
+                                               decreasing = private$.sort$decreasing))
+          if (identical(sorted, FALSE)) stop("The table source rejected the current sort after filtering.", call. = FALSE)
+        }
+        private$clear_source_cache()
+        private$set_view(NULL)
+        self$invalidate()
+        return(invisible(self))
+      }
       if (is.null(filters)) {
         private$.filters <- list()
       } else {
@@ -326,15 +420,16 @@ DataTable <- R6::R6Class(
       invisible(self)
     },
 
-    #' @description The original row number under the cursor (or `NA`).
+    #' @description The data-frame row number or source row key under the cursor (or `NA`).
     selected_row = function() {
       pos <- private$.state$cursor_row
-      if (pos < 1L) NA_integer_ else private$view_rows()[[pos]]
+      if (pos < 1L) NA_integer_ else private$row_at_position(pos)
     },
 
     #' @description One data row as a named list.
     #' @param row Original row number.
     row_data = function(row) {
+      if (is_table_source(private$.source)) return(as.list(private$source_read(row, private$source_column_names())[1L, , drop = FALSE]))
       as.list(private$.data[row, , drop = FALSE])
     },
 
@@ -342,12 +437,17 @@ DataTable <- R6::R6Class(
     #'   cursor row is returned when no range is selected.
     selected_data = function() {
       pos <- private$selected_positions()
+      if (is_table_source(private$.source)) return(private$source_read(private$positions_to_rows(pos), private$source_column_names()))
       private$.data[private$view_rows()[pos], , drop = FALSE]
     },
 
     #' @description Data in the current viewport, in display order.
     visible_data = function() {
       g <- private$geometry()
+      if (is_table_source(private$.source)) {
+        if (is.null(g) || !length(g$rows)) return(private$empty_source_data(private$visible_columns()))
+        return(private$source_read(private$positions_to_rows(g$rows), names(private$.data)[g$columns]))
+      }
       if (is.null(g) || !length(g$rows)) return(private$.data[integer(), private$visible_columns(), drop = FALSE])
       private$.data[private$view_rows()[g$rows], g$columns, drop = FALSE]
     },
@@ -541,9 +641,16 @@ DataTable <- R6::R6Class(
         app$notify(sprintf("Column \"%s\" cannot be edited.", spec$label), severity = "warning")
         return(invisible(self))
       }
-      row <- private$view_rows()[[position]]
       template <- private$.data[[j]]
-      current <- edit_text(template[[row]])
+      if (is_table_source(private$.source)) {
+        row <- as.integer(position)
+        template <- private$.source_schema[[j]]
+        current <- private$source_read(row, names(private$.data)[[j]])[[1L]][[1L]]
+      } else {
+        row <- private$view_rows()[[position]]
+        current <- template[[row]]
+      }
+      current <- edit_text(current)
       editor <- input(current, id = "cell_editor",
                       validate = function(txt) parse_cell(txt, template)$error)
       dlg <- modal(
@@ -576,6 +683,25 @@ DataTable <- R6::R6Class(
     set_cell = function(row, column, value) {
       j <- private$column_index(column)
       name <- names(private$.data)[[j]]
+      if (is_table_source(private$.source)) {
+        if (is.null(private$.source$set_value)) stop("Editing is not supported by this table source.", call. = FALSE)
+        if (length(row) != 1L || is.na(row) || row < 1L || row > private$source_row_count()) stop("`row` is out of range.", call. = FALSE)
+        template <- private$.source_schema[[j]]
+        checked <- parse_cell(value, template)
+        if (!is.null(checked$error)) stop(checked$error, call. = FALSE)
+        value <- checked$value
+        if (!is.null(self$on_edit)) {
+          msg <- run_validator(function(v) self$on_edit(row, name, v), value)
+          if (!is.null(msg)) stop(msg, call. = FALSE)
+        }
+        old <- private$source_read(row, name)[[1L]][[1L]]
+        result <- private$.source$set_value(as.integer(row), name, value)
+        if (identical(result, FALSE)) stop("The table source rejected the edit.", call. = FALSE)
+        private$clear_source_cache()
+        self$invalidate()
+        self$post_message("datatable.cell_changed", list(row = row, column = name, old = old, value = value))
+        return(invisible(self))
+      }
       if (length(row) != 1L || is.na(row) || row < 1L || row > nrow(private$.data)) {
         stop("`row` is out of range.", call. = FALSE)
       }
@@ -822,9 +948,16 @@ DataTable <- R6::R6Class(
       }
       rows_pos <- g$rows
       if (length(rows_pos) > 0L) {
-        data_rows <- private$view_rows()[rows_pos]
+        data_rows <- private$positions_to_rows(rows_pos)
+        if (is_table_source(private$.source)) {
+          private$.source_stats$rows_rendered <- private$.source_stats$rows_rendered + length(data_rows)
+          private$.source_stats$cells_rendered <- private$.source_stats$cells_rendered + length(data_rows) * length(cols)
+        }
         texts <- lapply(cols, function(j) pad_cells(private$format_values(j, data_rows), g$widths[[match(j, cols)]], private$.specs[[j]]$align))
-        rn_text <- if (!is.null(rn)) pad_cells(table_row_labels(private$.data, rn, data_rows), rn$width, "left")
+        rn_text <- if (is.null(rn)) NULL else {
+          rn_labels <- if (is_table_source(private$.source)) as.character(data_rows) else table_row_labels(private$.data, rn, data_rows)
+          pad_cells(rn_labels, rn$width, "left")
+        }
         focused <- self$focused
         for (k in seq_along(rows_pos)) {
           y <- g$body_y + k - 1L
@@ -846,13 +979,13 @@ DataTable <- R6::R6Class(
     }
   ),
   active = list(
-    #' @field data The data frame (assigning calls `set_data()`).
+    #' @field data The data frame or source (assigning calls `set_data()`).
     data = function(value) {
-      if (missing(value)) return(private$.data)
+      if (missing(value)) return(if (is_table_source(private$.source)) private$.source else private$.data)
       self$set_data(value)
     },
     #' @field row_count Number of rows in the current view.
-    row_count = function(value) if (missing(value)) length(private$view_rows()) else read_only("row_count"),
+    row_count = function(value) if (missing(value)) private$row_count_view() else read_only("row_count"),
     #' @field column_names Names of the data columns.
     column_names = function(value) if (missing(value)) names(private$.data) else read_only("column_names"),
     #' @field cursor_row Cursor position in the view (0 = none).
@@ -868,7 +1001,7 @@ DataTable <- R6::R6Class(
     #' @field offset_row,offset_column Scroll offsets (rows / columns).
     offset_row = function(value) if (missing(value)) private$.state$offset_row else read_only("offset_row"),
     offset_column = function(value) if (missing(value)) private$.state$offset_col else read_only("offset_column"),
-    #' @field view Original row numbers of the rows in view order.
+    #' @field view Row numbers or source view positions in display order.
     view = function(value) if (missing(value)) private$view_rows() else read_only("view"),
     #' @field sort_state `NULL` or a data frame (`column`, `decreasing`) of
     #'   the current sort keys.
@@ -884,11 +1017,17 @@ DataTable <- R6::R6Class(
       if (!missing(value)) read_only("match_hit")
       hit <- private$.find_hit
       if (is.null(hit)) return(NULL)
-      list(position = hit$pos, row = private$view_rows()[[hit$pos]], column = names(private$.data)[[hit$column]])
+      list(position = hit$pos, row = private$row_at_position(hit$pos), column = names(private$.data)[[hit$column]])
     }
   ),
   private = list(
     .data = NULL,
+    .source = NULL,
+    .source_closed = FALSE,
+    .source_schema = NULL,
+    .source_cache = NULL,
+    .source_lru = character(),
+    .source_stats = NULL,
     .view = NULL,
     .specs = list(),
     .row_names = NULL,
@@ -911,18 +1050,118 @@ DataTable <- R6::R6Class(
     .selection_end = NA_integer_,
     .selection_drag = FALSE,
 
-    view_rows = function() private$.view %||% seq_len(nrow(private$.data)),
+    view_rows = function() private$.view %||% seq_len(private$row_count_data()),
+
+    row_count_data = function() if (is_table_source(private$.source)) private$source_row_count() else nrow(private$.data),
+
+    row_count_view = function() if (is_table_source(private$.source)) private$source_row_count() else length(private$view_rows()),
+
+    source_row_count = function() {
+      if (isTRUE(private$.source_closed)) stop("This table source is closed.", call. = FALSE)
+      n <- private$.source$row_count()
+      if (!is.numeric(n) || length(n) != 1L || is.na(n) || !is.finite(n) ||
+          n < 0 || n != floor(n) || n > .Machine$integer.max) {
+        stop("`table_source$row_count()` must return a non-negative whole number no larger than .Machine$integer.max.", call. = FALSE)
+      }
+      as.integer(n)
+    },
+
+    source_column_names = function() {
+      nm <- private$.source$column_names()
+      if (!is.character(nm) || !length(nm) || anyNA(nm) || any(!nzchar(nm)) || anyDuplicated(nm)) {
+        stop("`table_source$column_names()` must return unique, non-empty column names.", call. = FALSE)
+      }
+      nm
+    },
+
+    clear_source_cache = function() {
+      if (is_table_source(private$.source)) {
+        rm(list = ls(private$.source_cache, all.names = TRUE), envir = private$.source_cache)
+        private$.source_lru <- character()
+      }
+      invisible()
+    },
+
+    get_source_page = function(start, count, columns) {
+      if (isTRUE(private$.source_closed)) stop("This table source is closed.", call. = FALSE)
+      n <- private$source_row_count()
+      expected <- if (count == 0L || start > n) 0L else min(count, n - start + 1L)
+      key <- paste(start, count, paste(columns, collapse = "\r"), sep = "|")
+      if (exists(key, private$.source_cache, inherits = FALSE)) {
+        private$.source_stats$cache_hits <- private$.source_stats$cache_hits + 1L
+        private$.source_lru <- c(private$.source_lru[private$.source_lru != key], key)
+        return(get(key, private$.source_cache, inherits = FALSE))
+      }
+      private$.source_stats$cache_misses <- private$.source_stats$cache_misses + 1L
+      private$.source_stats$fetch_calls <- private$.source_stats$fetch_calls + 1L
+      private$.source_stats$rows_requested <- private$.source_stats$rows_requested + expected
+      result <- tryCatch(private$.source$get_rows(start, count, columns), error = function(e) {
+        stop(sprintf("`table_source$get_rows(start=%d, count=%d)` failed: %s", start, count, conditionMessage(e)), call. = FALSE)
+      })
+      if (!is.data.frame(result)) stop("`table_source$get_rows()` must return a data.frame.", call. = FALSE)
+      if (nrow(result) != expected) {
+        stop(sprintf("`table_source$get_rows(start=%d, count=%d)` returned %d rows; expected %d.", start, count, nrow(result), expected), call. = FALSE)
+      }
+      if (!identical(names(result), columns)) {
+        stop(sprintf("`table_source$get_rows(start=%d, count=%d)` returned inconsistent column names.", start, count), call. = FALSE)
+      }
+      assign(key, result, private$.source_cache)
+      private$.source_lru <- c(private$.source_lru, key)
+      if (length(private$.source_lru) > 32L) {
+        expired <- private$.source_lru[[1L]]
+        private$.source_lru <- private$.source_lru[-1L]
+        if (exists(expired, private$.source_cache, inherits = FALSE)) rm(list = expired, envir = private$.source_cache)
+      }
+      result
+    },
+
+    source_read = function(rows, columns) {
+      if (!length(rows)) return(private$empty_source_data(columns))
+      n <- private$source_row_count()
+      if (anyNA(rows) || any(rows < 1L | rows > n)) stop("A table source row request is out of range.", call. = FALSE)
+      chunk <- 100L
+      ids <- (as.integer(rows) - 1L) %/% chunk
+      pieces <- vector("list", length(rows))
+      for (id in unique(ids)) {
+        at <- which(ids == id)
+        start <- id * chunk + 1L
+        page <- private$get_source_page(start, min(chunk, n - start + 1L), columns)
+        pieces[at] <- lapply(match(rows[at], seq.int(start, length.out = nrow(page))), function(i) page[i, , drop = FALSE])
+      }
+      out <- do.call(rbind, pieces)
+      row.names(out) <- NULL
+      out
+    },
+
+    empty_source_data = function(columns) {
+      schema <- private$.source_schema
+      out <- schema[integer(), columns, drop = FALSE]
+      out
+    },
+
+    positions_to_rows = function(positions) {
+      if (is_table_source(private$.source)) as.integer(positions) else private$view_rows()[positions]
+    },
+
+    row_at_position = function(position) {
+      if (is_table_source(private$.source)) {
+        if (is.null(private$.source$row_key)) return(as.integer(position))
+        return(private$.source$row_key(as.integer(position)))
+      }
+      private$view_rows()[[position]]
+    },
 
     set_view = function(rows) {
       selected <- self$selected_row()
+      old_position <- private$.state$cursor_row
       private$.view <- rows
       private$.selection_anchor <- NA_integer_
       private$.selection_end <- NA_integer_
       private$.find_hit <- NULL
-      view <- private$view_rows()
-      pos <- if (is.na(selected)) NA_integer_ else match(selected, view)
-      n <- length(view)
-      new_cursor <- if (self$cursor_type == "none" || n == 0L) 0L else if (is.na(pos)) 1L else pos
+      view <- if (is_table_source(private$.source)) NULL else private$view_rows()
+      pos <- if (is_table_source(private$.source)) old_position else if (is.na(selected)) NA_integer_ else match(selected, view)
+      n <- private$row_count_view()
+      new_cursor <- if (self$cursor_type == "none" || n == 0L) 0L else if (is.na(pos)) 1L else min(n, max(1L, pos))
       private$.state$cursor_row <- new_cursor
       private$.state$offset_row <- private$clamp_row_offset(private$.state$offset_row)
       private$reveal_cursor()
@@ -941,7 +1180,7 @@ DataTable <- R6::R6Class(
 
     format_values = function(j, rows) {
       spec <- private$.specs[[j]]
-      values <- private$.data[[j]][rows]
+      values <- if (is_table_source(private$.source)) private$source_read(rows, names(private$.data)[[j]])[[1L]] else private$.data[[j]][rows]
       out <- spec$formatter(values)
       if (!is.character(out) || length(out) != length(rows)) {
         stop(sprintf("The formatter of column \"%s\" must return one string per value.", spec$name), call. = FALSE)
@@ -1101,12 +1340,13 @@ DataTable <- R6::R6Class(
 
     selection_data = function() {
       pos <- private$.state$cursor_row
-      row <- private$view_rows()[[pos]]
-      out <- list(row = row, position = pos, value = self$row_data(row))
+      row <- private$row_at_position(pos)
+      value <- if (is_table_source(private$.source)) as.list(private$source_read(pos, private$source_column_names())[1L, , drop = FALSE]) else self$row_data(row)
+      out <- list(row = row, position = pos, value = value)
       col <- private$.state$cursor_col
       if (self$cursor_type == "cell" && col > 0L) {
         out$column <- names(private$.data)[[col]]
-        out$value <- private$.data[[col]][[row]]
+        out$value <- if (is_table_source(private$.source)) private$source_read(pos, names(private$.data)[[col]])[[1L]][[1L]] else private$.data[[col]][[row]]
       }
       out
     },
@@ -1121,7 +1361,10 @@ DataTable <- R6::R6Class(
       layered <- NULL
       if (pos %in% private$selected_positions()) layered <- table_styles$match
       if (self$zebra && pos %% 2L == 0L) layered <- table_styles$zebra
-      if (!is.null(self$row_style)) layered <- merge_styles(layered, as_style(self$row_style(row, private$.data)))
+      if (!is.null(self$row_style)) {
+        data <- if (is_table_source(private$.source)) private$source_read(row, private$source_column_names()) else private$.data
+        layered <- merge_styles(layered, as_style(self$row_style(row, data)))
+      }
       if (self$cursor_type == "row" && pos == private$.state$cursor_row) {
         layered <- merge_styles(layered, if (focused) table_styles$cursor else table_styles$cursor_blur)
       }
@@ -1134,7 +1377,8 @@ DataTable <- R6::R6Class(
         j <- g$columns[[i]]
         layered <- NULL
         if (!is.null(self$cell_style)) {
-          layered <- as_style(self$cell_style(private$.data[[j]][[row]], row, names(private$.data)[[j]]))
+          value <- if (is_table_source(private$.source)) private$source_read(row, names(private$.data)[[j]])[[1L]][[1L]] else private$.data[[j]][[row]]
+          layered <- as_style(self$cell_style(value, row, names(private$.data)[[j]]))
         }
         if (self$cursor_type == "cell" && pos == private$.state$cursor_row && j == private$.state$cursor_col) {
           layered <- merge_styles(layered, if (focused) table_styles$cursor else table_styles$cursor_blur)
@@ -1200,6 +1444,21 @@ DataTable <- R6::R6Class(
 
     apply_sort = function(announce = TRUE) {
       so <- private$.sort
+      if (is_table_source(private$.source)) {
+        if (!is.null(private$.source$sort)) {
+          result <- private$.source$sort(if (is.null(so)) NULL else
+            list(columns = names(private$.data)[so$columns], decreasing = so$decreasing))
+          if (identical(result, FALSE)) stop("The table source rejected the sort.", call. = FALSE)
+        } else if (!is.null(so)) {
+          stop("Sorting is not supported by this table source.", call. = FALSE)
+        }
+        private$clear_source_cache()
+        private$set_view(NULL)
+        if (announce) self$post_message("datatable.sorted", list(
+          columns = if (!is.null(so)) names(private$.data)[so$columns], decreasing = so$decreasing
+        ))
+        return(invisible(self))
+      }
       base <- private$.base_view
       base <- private$filter_rows(base)
       if (is.null(so)) {
@@ -1321,11 +1580,11 @@ DataTable <- R6::R6Class(
     # Width that fits the header and the formatted values of some rows.
     estimate_width = function(j, rows) {
       spec <- private$.specs[[j]]
-      view <- private$view_rows()
-      n <- length(view)
+      view <- if (is_table_source(private$.source)) NULL else private$view_rows()
+      n <- private$row_count_view()
       pos <- switch(
         rows,
-        all = seq_len(n),
+        all = if (is_table_source(private$.source)) stop("`rows = 'all'` is unavailable for lazy sources; use the backend to size the column.", call. = FALSE) else seq_len(n),
         visible = {
           g <- private$geometry()
           if (is.null(g)) sample_rows(n) else g$rows
@@ -1335,7 +1594,7 @@ DataTable <- R6::R6Class(
           unique(c(sample_rows(n), if (!is.null(g)) g$rows))
         }
       )
-      values <- if (length(pos)) private$format_values(j, view[pos]) else character()
+      values <- if (length(pos)) private$format_values(j, if (is_table_source(private$.source)) pos else view[pos]) else character()
       w <- max(c(str_width(spec$label) + 2L * (!is.null(private$.sort) && j %in% private$.sort$columns),
                  str_width(values), 1L))
       cap <- spec$max_width %||% private$.options$max_width %||% 1000L
@@ -1371,6 +1630,7 @@ DataTable <- R6::R6Class(
 
     cell_editable = function(j) {
       spec <- private$.specs[[j]]
+      if (is_table_source(private$.source)) return(!is.null(private$.source$set_value) && isTRUE(spec$editable %||% TRUE))
       x <- private$.data[[j]]
       if (!is.null(spec$editable)) return(isTRUE(spec$editable) && !is.list(x))
       is.atomic(x) && !is.list(x) && (is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x) ||
@@ -1385,6 +1645,7 @@ DataTable <- R6::R6Class(
     # Move to the next / previous cell that matches the search.
     goto_hit = function(direction, include_current = FALSE) {
       q <- private$.find
+      if (is_table_source(private$.source)) return(private$goto_source_hit(q, direction, include_current))
       view <- private$view_rows()
       n <- length(view)
       if (is.null(q) || !nzchar(q$pattern) || n == 0L) return(FALSE)
@@ -1445,6 +1706,46 @@ DataTable <- R6::R6Class(
       self$invalidate_paint()
       self$post_message("datatable.found", list(position = found[[1]], row = view[[found[[1]]]],
                                                 column = names(private$.data)[[found[[2]]]]))
+      TRUE
+    },
+
+    goto_source_hit = function(query, direction, include_current = FALSE) {
+      if (is.null(query) || !nzchar(query$pattern)) return(FALSE)
+      if (is.null(private$.source$search)) {
+        private$.find_error <- "Search is not supported by this table source"
+        private$.find_hit <- NULL
+        self$invalidate_paint()
+        return(FALSE)
+      }
+      start <- private$.find_hit$pos %||% max(1L, private$.state$cursor_row)
+      result <- private$.source$search(query, names(private$.data)[private$find_columns()], start = start,
+                                       direction = direction, include_current = include_current)
+      if (is.null(result)) {
+        private$.find_hit <- NULL
+        self$invalidate_paint()
+        return(FALSE)
+      }
+      if (!is.list(result) || length(result$position) != 1L || !is.numeric(result$position) ||
+          is.na(result$position) || !is.finite(result$position) || result$position != floor(result$position) ||
+          length(result$column) != 1L || is.na(result$column) ||
+          result$position < 1L || result$position > private$source_row_count()) {
+        stop("`table_source$search()` must return NULL or a valid `position` and `column`.", call. = FALSE)
+      }
+      j <- private$column_index(result$column)
+      pos <- as.integer(result$position)
+      private$.find_hit <- list(pos = pos, column = j)
+      private$.state$active_col <- j
+      if (self$cursor_type != "none") {
+        private$.state$cursor_row <- pos
+        if (self$cursor_type == "cell") private$.state$cursor_col <- j
+      }
+      g <- private$geometry()
+      if (!is.null(g) && (pos <= private$.state$offset_row || pos > private$.state$offset_row + g$body_h)) {
+        private$.state$offset_row <- as.integer(private$clamp_row_offset(pos - 1L - g$body_h %/% 2L))
+      }
+      self$invalidate_paint()
+      self$post_message("datatable.found", list(position = pos, row = private$row_at_position(pos),
+                                                  column = names(private$.data)[[j]]))
       TRUE
     },
 
