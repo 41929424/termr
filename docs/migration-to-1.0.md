@@ -1,23 +1,37 @@
 # Migration to 1.0
 
 This note records the compatibility position for the 0.9 development series.
-There are no mandatory API migrations in this series: no exported function or
-class has been renamed or removed, and no exported symbol is currently marked
-deprecated. The 1.0 release plan is to keep the documented stable API listed
-in [API stability](stability.md).
+Only the experimental functions and argument listed under "Renamed functions
+and arguments" were renamed; no exported symbol is marked deprecated. The 1.0
+release plan is to keep the documented stable API listed in
+[API stability](stability.md).
 
 ## Names and compatibility
 
-No naming change was justified by the pre-1.0 audit. In particular,
+Apart from the renames below, no naming change was made. In particular,
 `browse_data()` and `data_browser()` are related but distinct, and pairs such
 as `tabs()` / `tab()` or `run_worker()` / `run_process()` are not aliases.
-They need no migration. Existing argument names and documented behavior
-remain the migration baseline.
+They need no migration. Event names are not renamed either; the
+[event reference](events.md) freezes them as they are.
 
 The historical package rename from `retui` to `termr` happened in 0.3.0 and
 did not provide compatibility aliases. Current code should use `termr`,
 `termr_progress()`, `termr.*` options, and `TERMR_*` environment variables;
 this is historical guidance, not a new 1.0 change.
+
+## Renamed functions and arguments
+
+These experimental APIs were added in the 0.9 series and are renamed before
+1.0 without compatibility aliases:
+
+| Old (0.9 development) | New | First version |
+|---|---|---|
+| `snapshot_json(x, ...)` | `screen_snapshot_json(x, ...)` | 1.0.0 |
+| `inspect_json(x, ...)` | `widget_snapshot_json(x, ...)` | 1.0.0 |
+| `db_table_source(con, table, own_connection = TRUE)` | `db_table_source(con, table, owned = TRUE)` | 1.0.0 |
+
+`widget_snapshot()` and its JSON gain a root `schema_version` field; nested
+nodes are unchanged.
 
 ## Behavior changes from the pre-1.0 audit
 
