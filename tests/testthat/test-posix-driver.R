@@ -5,7 +5,14 @@ fake_reader <- function(chunks) {
   env$chunks <- chunks
   env$alive <- TRUE
   list(
-    poll_io = function(ms) c(output = if (length(env$chunks)) "ready" else "timeout"),
+    # An NA chunk is a poll that finds nothing yet (a gap between fragments).
+    poll_io = function(ms) {
+      if (length(env$chunks) && is.na(env$chunks[[1]])) {
+        env$chunks <- env$chunks[-1]
+        return(c(output = "timeout"))
+      }
+      c(output = if (length(env$chunks)) "ready" else "timeout")
+    },
     read_output = function() {
       out <- env$chunks[[1]]
       env$chunks <- env$chunks[-1]
@@ -31,9 +38,29 @@ test_that("the Unix driver turns terminal input into key and mouse events", {
   keys <- function(evs) vapply(evs, function(e) if (inherits(e, "KeyEvent")) e$key else e$type, "")
   expect_identical(keys(x$driver$read_events(0)), c("a", "b", "up"))
   expect_identical(keys(x$driver$read_events(0)), c("mouse.down", "mouse.up"))
-  # A lone ESC is reported once no more input follows.
+  # A lone ESC is reported once no more input follows for the escape timeout.
   expect_length(x$driver$read_events(0), 0)
+  expect_length(x$driver$read_events(0), 0)
+  x$driver$.__enclos_env__$private$pending_since <- now_seconds() - 1
   expect_identical(keys(x$driver$read_events(0)), "escape")
+})
+
+test_that("a fragmented sequence is not cut by short polls between its fragments", {
+  x <- posix_with(list("\033", "[1;", "5C"))
+  keys <- function(evs) vapply(evs, function(e) if (inherits(e, "KeyEvent")) e$key else e$type, "")
+  got <- character()
+  # An event loop with work to do polls with a zero timeout in between.
+  for (i in 1:8) got <- c(got, keys(x$driver$read_events(0)))
+  expect_identical(got, "ctrl+right")
+})
+
+test_that("the escape timeout is measured from the last byte and can be widened for tests", {
+  withr::local_envvar(TERMR_ESC_TIMEOUT_MS = "250")
+  expect_identical(PosixDriver$new(color_mode = "16")$escape_timeout_ms, 250L)
+  withr::local_envvar(TERMR_ESC_TIMEOUT_MS = "5")
+  expect_identical(PosixDriver$new(color_mode = "16")$escape_timeout_ms, 30L)
+  withr::local_envvar(TERMR_ESC_TIMEOUT_MS = NA)
+  expect_identical(PosixDriver$new(color_mode = "16")$escape_timeout_ms, 30L)
 })
 
 test_that("the Unix driver reports a dead input reader", {

@@ -18,6 +18,7 @@ Checks:
 import fcntl
 import errno
 import os
+import platform
 import pty
 import re
 import select
@@ -57,8 +58,10 @@ def require_current_install():
 class Session:
     active = []
 
-    def __init__(self, script=None, cols=60, rows=20, tty_mode="controlling", term="xterm-256color", command=None):
+    def __init__(self, script=None, cols=60, rows=20, tty_mode="controlling", term="xterm-256color", command=None,
+                 extra_env=None):
         env = os.environ.copy()
+        env.update(extra_env or {})
         for key in ("COLORTERM", "TERM_PROGRAM", "WT_SESSION", "KITTY_WINDOW_ID",
                     "WEZTERM_EXECUTABLE", "ALACRITTY_LOG", "VTE_VERSION"):
             env.pop(key, None)
@@ -98,7 +101,18 @@ class Session:
         self.output = ""
         self.status = None
         self.eof = False
+        self.pgid = None
         self.active.append(self)
+
+    def identity(self):
+        """pid / process group / session of the child. A pty child is a session
+        leader (so pgid == pid), but that is verified, never assumed; the group
+        is remembered because getpgid() fails once the child is reaped."""
+        try:
+            self.pgid = os.getpgid(self.pid)
+            return f"pid={self.pid} pgid={self.pgid} sid={os.getsid(self.pid)}"
+        except ProcessLookupError:
+            return f"pid={self.pid} (gone) last-known pgid={self.pgid}"
 
     def resize(self, cols, rows):
         fcntl.ioctl(self.fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
@@ -110,7 +124,9 @@ class Session:
     def read(self, seconds):
         end = time.monotonic() + seconds
         while not self.eof and time.monotonic() < end:
-            ready, _, _ = select.select([self.fd], [], [], 0.05)
+            # Never block past the requested duration: a "10 ms" read between
+            # fragments must not become a 50 ms gap.
+            ready, _, _ = select.select([self.fd], [], [], max(0.0, min(0.05, end - time.monotonic())))
             if ready:
                 try:
                     data = os.read(self.fd, 65536)
@@ -169,15 +185,52 @@ class Session:
         raise AssertionError(f"the app did not exit; output tail: {strip(self.output)[-400:]!r}")
 
     def close(self):
-        # A failed assertion must not leave the R process/input reader behind.
+        """Kill what is left of the child's process group and reap it.
+
+        Never assumes pid == pgid and never signals the harness' own group.
+        Returns a list of unexpected problems (empty when clean) instead of
+        raising, so one case's cleanup can not take the following cases down.
+        """
+        problems = []
+        leader_alive = not self.exited()
+        pgid = self.pgid
+        if leader_alive:
+            try:
+                pgid = self.pgid = os.getpgid(self.pid)
+            except ProcessLookupError:
+                leader_alive = False
+        if pgid and pgid > 1 and pgid != os.getpgrp():
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # nothing left in the group
+            except PermissionError as error:
+                # macOS answers EPERM for a group whose only members are
+                # already-exited zombies. That is expected once the leader is
+                # gone; with a live leader it is a real problem.
+                if leader_alive:
+                    try:
+                        os.kill(self.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    except PermissionError:
+                        problems.append(f"cannot kill live child ({self.identity()}): {error}")
+        elif leader_alive:
+            try:
+                os.kill(self.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if self.status is None:
+            try:
+                _, status = os.waitpid(self.pid, 0)
+                self.status = os.waitstatus_to_exitcode(status)
+            except ChildProcessError:
+                self.status = self.status if self.status is not None else -1
         try:
-            os.killpg(self.pid, signal.SIGKILL)
-        except ProcessLookupError:
+            os.close(self.fd)
+        except OSError:
             pass
-        if not self.exited():
-            _, status = os.waitpid(self.pid, 0)
-            self.status = os.waitstatus_to_exitcode(status)
-        os.close(self.fd)
+        return problems
 
 
 def teardown_modes(s):
@@ -194,34 +247,50 @@ def check(name, condition, detail=""):
     print(("PASS " if condition else "FAIL ") + name + (f": {detail}" if detail and not condition else ""))
     if not condition:
         check.failed += 1
+        if os.environ.get("GITHUB_ACTIONS"):
+            # Surface the failure in the run's annotations (logs need a login).
+            text = f"{name}: {detail}".replace("%", "%25").replace(chr(13), "%0D").replace(chr(10), "%0A")
+            print(f"::error title=PTY {platform.system()}::{text[:1800]}", flush=True)
 
 
 check.failed = 0
 
 
 def normal_session():
-    s = Session(os.path.join(ROOT, "inst", "examples", "hello.R"))
-    s.wait_for("termr demo")
-    check("PTY harness provides a controlling terminal", "__PTY_CTTY_OK__" in s.output,
-          "pty.fork child could not open /dev/tty as its controlling terminal")
-    attrs = s.attrs()
-    check("raw mode while running (no ICANON, no ECHO)",
-          not (attrs[3] & termios.ICANON) and not (attrs[3] & termios.ECHO))
-    check("alternate screen entered", "\x1b[?1049h" in s.output)
-    s.send("Ada")
-    s.send("\t")
-    s.send("\r")
-    s.wait_for("Hello, Ada")
-    check("typing, Tab and Enter", True)
-    s.send("\x1b[D")  # an arrow key escape sequence must not print
-    check("escape sequences are parsed", "[D" not in strip(s.output[-200:]))
-    before_resize = s.output.count("\x1b[2J")
-    s.resize(40, 12)
-    check("resize redraws", wait_until(lambda: s.output.count("\x1b[2J") > before_resize, s))
-    s.send("\x03")  # Ctrl+C quits (raw mode: it is a key)
-    code = s.wait_exit()
-    check("Ctrl+C quits with status 0", code == 0, f"status {code}")
-    teardown_modes(s)
+    with tempfile.TemporaryDirectory(prefix="termr-pty-hello-") as directory:
+        log = os.path.join(directory, "events.log")
+        os.environ["TERMR_PTY_LOG"] = log
+        s = Session(os.path.join(HERE, "hello-app.R"))
+        s.wait_for("termr demo", 60)
+        print("PTY child identity:", s.identity(), flush=True)
+        check("PTY harness provides a controlling terminal", "__PTY_CTTY_OK__" in s.output,
+              "pty.fork child could not open /dev/tty as its controlling terminal")
+        check("hello app ready", wait_until(lambda: "ready" in read_log(log), s, 60), repr(read_log(log)))
+        attrs = s.attrs()
+        check("raw mode while running (no ICANON, no ECHO)",
+              not (attrs[3] & termios.ICANON) and not (attrs[3] & termios.ECHO))
+        check("alternate screen entered", "\x1b[?1049h" in s.output)
+        s.send("Ada")
+        s.send("\t")
+        s.send("\r")
+        # The action log proves the transport: "Ada" reached the input, Tab moved
+        # focus to the button and Enter pressed it. Screen text is not used for
+        # this (a diff renderer may split a changed line into several runs).
+        pressed = wait_until(lambda: "pressed name=Ada" in read_log(log), s, 30)
+        check("typing, Tab and Enter", pressed,
+              f"log={read_log(log)!r}; screen tail={strip(s.output)[-300:]!r}")
+        print(f"INFO result label text contiguous on the stream: {'Hello, Ada' in strip(s.output)} "
+              "(a diff renderer may split it into several cursor-addressed runs)", flush=True)
+        s.send("\x1b[D")  # an arrow key escape sequence must not print
+        s.read(0.3)
+        check("escape sequences are parsed", "[D" not in strip(s.output[-200:]))
+        before_resize = s.output.count("\x1b[2J")
+        s.resize(40, 12)
+        check("resize redraws", wait_until(lambda: s.output.count("\x1b[2J") > before_resize, s))
+        s.send("\x03")  # Ctrl+C quits (raw mode: it is a key)
+        code = s.wait_exit()
+        check("Ctrl+C quits with status 0", code == 0, f"status {code}")
+        teardown_modes(s)
 
 
 def read_log(path):
@@ -285,20 +354,6 @@ def keys_session():
             send_expect("key " + name, [seq],
                         lambda ev, name=name: any(e.split(" [", 1)[0] == "key " + name for e in ev))
 
-        # Delays here intentionally split the transport, not synchronization.
-        for name, chunks, expected in (
-            ("escape sequence split across reads", [b"\x1b", b"[1;", b"5C"], "key ctrl+right"),
-            ("UTF-8 split across reads", [bytes([b]) for b in "€".encode()], "key € [€]"),
-            ("bracketed paste fragmented", [b"\x1b[200~first line\nsec", "ond é\x1b[201~".encode()],
-             "paste first line<LF>second é"),
-        ):
-            mark = len(read_log(log))
-            for chunk in chunks:
-                s.send(chunk)
-                s.read(0.01)
-            check(name, wait_until(lambda: expected in read_log(log)[mark:], s),
-                  repr(read_log(log)[mark:]))
-
         send_expect("mouse press/release/wheel",
                     ["\x1b[<0;5;1M\x1b[<0;5;1m\x1b[<64;5;1M"],
                     lambda ev: all(line in ev for line in (
@@ -334,6 +389,48 @@ def keys_session():
         teardown_modes(s)
         s.close()
         Session.active.remove(s)
+def fragments_session():
+    """Fragmented input, with the escape timeout widened for this session only.
+
+    The runtime default (30 ms of silence) is what disambiguates a real Escape
+    key, and it stays in force in every other session. Here the window is made
+    wide enough that scheduler latency on a loaded CI runner can not cut a
+    sequence between two deliberate, well separated writes; each fragment is a
+    separate OS write and (with the pause between them) a separate read.
+    """
+    with tempfile.TemporaryDirectory(prefix="termr-pty-frag-") as directory:
+        log = os.path.join(directory, "events.log")
+        os.environ["TERMR_PTY_LOG"] = log
+        s = Session(os.path.join(HERE, "keys-app.R"), extra_env={"TERMR_ESC_TIMEOUT_MS": "2500"})
+        check("fragments app starts", wait_until(lambda: "ready" in read_log(log), s, 60))
+        s.wait_for("keys app")
+        for name, chunks, expected in (
+            ("escape sequence split across reads", [b"\x1b", b"[1;", b"5C"], "key ctrl+right"),
+            ("UTF-8 split across reads", [bytes([b]) for b in "€".encode()], "key € [€]"),
+            ("bracketed paste fragmented", [b"\x1b[200~first line\nsec", "ond é\x1b[201~".encode()],
+             "paste first line<LF>second é"),
+        ):
+            mark = len(read_log(log))
+            for chunk in chunks:
+                s.send(chunk)
+                s.read(0.15)  # far below the 2.5 s window, far above one read cycle
+            check(name, wait_until(lambda: expected in read_log(log)[mark:], s),
+                  repr(read_log(log)[mark:]))
+            events = read_log(log)[mark:]
+            check(name + ": no stray Escape or bracket keys",
+                  not any(e.startswith(("key escape", "key [", "key 1", "key ;")) for e in events), repr(events))
+        # A lone Escape is still flushed as the Escape key once the window passes.
+        mark = len(read_log(log))
+        s.send(b"\x1b")
+        check("lone Escape is flushed as the Escape key after the timeout",
+              wait_until(lambda: "key escape" in read_log(log)[mark:], s, 8), repr(read_log(log)[mark:]))
+        s.send("\x11")
+        check("fragments session exits", s.wait_exit() == 0)
+        teardown_modes(s)
+        s.close()
+        Session.active.remove(s)
+
+
 def error_session():
     s = Session(os.path.join(HERE, "error-app.R"))
     s.wait_for("press x")
@@ -401,23 +498,36 @@ def termios_restored(stdin_only=False, term="xterm-256color", handler_error=Fals
     s.wait_for("press x" if handler_error else "termr demo", 60)
     s.send("x" if handler_error else "\x03")
     status = s.wait_exit()
-    settings = re.findall(r"^([0-9a-f:]{20,})\s*$", strip(s.output), re.M)
+    # `stty -g` prints colon-separated hex fields on Linux and
+    # "gfmt1:name=hex:..." on macOS/BSD; both are one token per line.
+    settings = re.findall(r"^(gfmt1:\S+|[0-9a-f]+(?::[0-9a-f]+){8,})\s*$", strip(s.output), re.M)
     check(f"stty restored (stdin_only={stdin_only}, TERM={term}, error={handler_error})",
           len(settings) >= 2 and settings[0] == settings[-1], f"found {settings}")
     check("restoration session status", status != 0 if handler_error else status == 0, f"status {status}")
     teardown_modes(s)
 
 
+def close_sessions(label):
+    """Clean up every live session; a cleanup failure is this case's failure
+    only and never stops the remaining cases."""
+    for session in list(Session.active):
+        try:
+            for problem in session.close():
+                check(f"{label}: cleanup", False, problem)
+        except Exception as error:  # noqa: BLE001 - keep later cases alive
+            check(f"{label}: cleanup", False, f"{type(error).__name__}: {error}")
+    Session.active.clear()
+
+
 def run_cases(cases):
     for case in cases:
+        label = getattr(case, "__name__", "case")
         try:
             case()
         except Exception as error:
-            check(case.__name__, False, str(error))
+            check(label, False, str(error))
         finally:
-            for session in Session.active:
-                session.close()
-            Session.active.clear()
+            close_sessions(label)
     if check.failed:
         print(f"{check.failed} check(s) failed")
         sys.exit(1)
@@ -426,7 +536,7 @@ def run_cases(cases):
 
 if __name__ == "__main__":
     require_current_install()
-    run_cases([normal_session, keys_session, error_session, termios_restored,
+    run_cases([normal_session, keys_session, fragments_session, error_session, termios_restored,
                stdin_fallback_session, no_tty_session, degraded_session,
                lambda: termios_restored(stdin_only=True),
                lambda: termios_restored(term="dumb"),

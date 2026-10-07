@@ -94,6 +94,8 @@ Worker <- R6::R6Class(
     max_lines = 1000L,
     max_events_per_poll = 200L,
     executable = NULL,
+    spawn_info = NULL,
+    trace_file = NULL,
     last_diagnostics = NULL,
     exited_at = NULL,
 
@@ -107,18 +109,25 @@ Worker <- R6::R6Class(
       # go to a directory of ours, so nothing is left behind when it is killed.
       scratch <- tempfile("termr-worker-tmp-")
       dir.create(scratch)
-      private$files <- c(job, out, prog, scratch)
+      # Bootstrap phases written by the helper, read back for diagnostics.
+      trace <- tempfile("termr-trace-", fileext = ".log")
+      private$files <- c(job, out, prog, scratch, trace)
       private$progress_file <- prog
+      private$trace_file <- trace
       saveRDS(list(fn = fn, args = args, packages = packages), job)
       script <- system.file("helpers", "termr-worker.R", package = "termr")
       if (!nzchar(script)) stop("The termr worker script is missing.", call. = FALSE)
       rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
       # R CMD check exports R_TESTS. Rscript evaluates it at startup even
       # with --vanilla, so a worker would otherwise rerun the test suite
-      # before loading its job (and recursively start more workers).
-      private$spawn(rscript, c("--vanilla", script, job, out, prog),
-                    env = c(R_TESTS = "", R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep),
-                            TMPDIR = scratch, TMP = scratch, TEMP = scratch))
+      # before loading its job (and recursively start more workers). The
+      # worker keeps the parent's working directory (a job may use relative
+      # paths), but the helper only touches absolute paths.
+      env <- c(R_TESTS = "", R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep),
+               TMPDIR = scratch, TMP = scratch, TEMP = scratch)
+      private$spawn_info <- paste0("spawn: wd=", getwd(), "; R_TESTS=[", env[["R_TESTS"]], "]; R_LIBS=[",
+                                   substr(env[["R_LIBS"]], 1L, 400L), "]")
+      private$spawn(rscript, c("--vanilla", script, job, out, prog, trace), env = env)
     },
 
     start_command = function(app, command, args, wd, env, timeout) {
@@ -168,10 +177,12 @@ Worker <- R6::R6Class(
       if (self$state != "running") return(invisible())
       if (alive) {
         if (!is.null(private$timeout) && now_seconds() - private$started > private$timeout) {
+          # Capture the process state (phase, process tree) before stopping it.
+          diag <- private$diagnostics()
           private$terminate(0.3)
           self$timed_out <- TRUE
           private$finish(list(ok = FALSE, message = paste0(
-            sprintf("Timed out after %s seconds. ", format(private$timeout)), private$diagnostics())))
+            sprintf("Timed out after %s seconds. ", format(private$timeout)), diag)))
         }
         return(invisible())
       }
@@ -237,7 +248,39 @@ Worker <- R6::R6Class(
              "; state=", if (alive) "alive" else "exited", "; worker=", self$state,
              "; exit_status=", if (is.null(status)) "unknown" else status,
              "; result_exists=", exists, "; stderr_tail=",
-             paste(utils::tail(self$stderr, 3L), collapse = " | "))
+             paste(utils::tail(self$stderr, 3L), collapse = " | "),
+             if (self$kind == "worker") paste0("; ", private$bootstrap_summary()),
+             if (alive && self$kind == "worker") paste0("; tree=", private$process_tree()),
+             if (!is.null(private$spawn_info)) paste0("; ", private$spawn_info))
+    },
+
+    # The bootstrap phases the helper reached. "phase=none" means the helper
+    # script never ran (the failure is before it: Rscript start-up, R_TESTS,
+    # library paths); "payload_started" without "payload_finished" means the
+    # job function itself did not return.
+    bootstrap_summary = function() {
+      path <- private$trace_file
+      lines <- if (!is.null(path) && file.exists(path)) tryCatch(readLines(path, warn = FALSE), error = function(e) character())
+      if (!length(lines)) return("phase=none (helper script not entered)")
+      fields <- strsplit(lines, "\t", fixed = TRUE)
+      phases <- vapply(fields, function(f) if (length(f) >= 2L) f[[2]] else "?", "")
+      shown <- substr(gsub("[\t\r]", " ", lines), 1L, 700L)
+      paste0("phase=", utils::tail(phases, 1L), "; trace=", paste(shown, collapse = " / "))
+    },
+
+    # Root and descendants of the worker process (pid, name, and the command
+    # line of workers, whose arguments are only our own temporary paths).
+    process_tree = function() {
+      tryCatch({
+        handle <- private$process$as_ps_handle()
+        describe <- function(h) {
+          cmd <- tryCatch(paste(ps::ps_cmdline(h), collapse = " "), error = function(e) "?")
+          paste0(ps::ps_pid(h), ":", tryCatch(ps::ps_name(h), error = function(e) "?"),
+                 "(", substr(cmd, 1L, 220L), ")")
+        }
+        kids <- ps::ps_children(handle, recursive = TRUE)
+        paste(c(describe(handle), vapply(kids, describe, "")), collapse = ", ")
+      }, error = function(e) "unavailable")
     },
 
     deliver_lines = function(lines, stream) {

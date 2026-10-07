@@ -1,6 +1,6 @@
 rscript <- function() file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
 
-termr_temp_files <- function() list.files(tempdir(), pattern = "^termr-(job|result|progress|worker-tmp)-")
+termr_temp_files <- function() list.files(tempdir(), pattern = "^termr-(job|result|progress|worker-tmp|trace)-")
 
 test_that("worker stdout and stderr are streamed, separate from progress", {
   skip_on_cran()
