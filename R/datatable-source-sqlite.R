@@ -10,12 +10,12 @@
 #' @param connection An open RSQLite connection, or a [db_connection()]
 #'   wrapper of one.
 #' @param table A table name or `DBI::Id`.
-#' @param own_connection If `TRUE`, `source$close()` disconnects this
+#' @param owned If `TRUE`, `source$close()` disconnects this
 #'   connection. The default leaves connection ownership with the caller.
 #' @return An experimental table source accepted by [data_table()].
 #' @export
-db_table_source <- function(connection, table, own_connection = FALSE) {
-  check_flag(own_connection)
+db_table_source <- function(connection, table, owned = FALSE) {
+  check_flag(owned)
   if (!requireNamespace("DBI", quietly = TRUE) || !requireNamespace("RSQLite", quietly = TRUE)) {
     stop("`db_table_source()` requires the optional DBI and RSQLite packages.", call. = FALSE)
   }
@@ -106,6 +106,6 @@ db_table_source <- function(connection, table, own_connection = FALSE) {
       TRUE
     },
     refresh = function() state$count <- count_rows(state$filters),
-    close = if (own_connection) function() DBI::dbDisconnect(connection) else NULL
+    close = if (owned) function() DBI::dbDisconnect(connection) else NULL
   )
 }

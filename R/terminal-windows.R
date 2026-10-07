@@ -34,6 +34,19 @@ parse_windows_integer <- function(text, field, min = -.Machine$integer.max,
   as.integer(parse_windows_number(text, field, min, max))
 }
 
+# Rterm's console output goes through Rprintf() and the Windows UCRT fwrite()
+# path. A full UTF-8 frame of only a few KiB can fault there at a page boundary.
+# Bound each console call while preserving the exact character stream. A UTF-8
+# code point is at most four bytes, so each piece is at most 4096 bytes.
+write_windows_stdout <- function(text, writer = write_stdout) {
+  count <- nchar(text, type = "chars")
+  if (count <= 1024L) return(writer(text))
+  for (start in seq.int(1L, count, by = 1024L)) {
+    writer(substr(text, start, min(start + 1023L, count)))
+  }
+  invisible(NULL)
+}
+
 WindowsDriver <- R6::R6Class(
   "WindowsDriver",
   inherit = TerminalDriver,
@@ -80,7 +93,7 @@ WindowsDriver <- R6::R6Class(
       invisible(self)
     },
 
-    write = function(text) write_stdout(text),
+    write = function(text) write_windows_stdout(text),
 
     size = function() private$last_size,
 

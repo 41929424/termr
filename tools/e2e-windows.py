@@ -32,6 +32,18 @@ import os, glob
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RSCRIPT = os.environ.get("RSCRIPT") or (sorted(glob.glob("C:/Program Files/R/R-*/bin/Rscript.exe")) or ["Rscript"])[-1]
 cmd = spec.get("cmd") or [RSCRIPT] + spec.get("rargs", []) + [str(ROOT / spec["rscript"])]
+
+# The scenarios run `library(termr)`: refuse to test an installed termr whose
+# version differs from this checkout (e.g. an old release in the user library).
+import subprocess
+wanted = next(line.split(":", 1)[1].strip()
+              for line in (ROOT / "DESCRIPTION").read_text(encoding="utf-8").splitlines()
+              if line.startswith("Version:"))
+found = subprocess.run([RSCRIPT, "-e", "cat(as.character(packageVersion('termr')))"],
+                       capture_output=True, text=True).stdout.strip()
+if found != wanted:
+    sys.exit(f"Installed termr is {found or 'missing'}, this checkout is {wanted}. "
+             "Install the checkout first (R CMD INSTALL .) or set R_LIBS.")
 proc = PtyProcess.spawn(cmd, dimensions=(rows, cols))
 
 def reader():
@@ -59,8 +71,13 @@ def snap(label):
             print("|" + line + "|")
         sys.stdout.flush()
 
-for step in spec["steps"]:
+for number, step in enumerate(spec["steps"], start=1):
     kind = step[0]
+    if kind in ("keys", "resize") and not proc.isalive():
+        # Report an early exit with its status instead of dying in write().
+        print(f"EXITED_EARLY: before step {number} {step!r}, "
+              f"{time.time() - T0:.2f}s after start, exit status {proc.exitstatus}")
+        break
     if kind == "wait":
         time.sleep(step[1])
     elif kind == "keys":

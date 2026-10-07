@@ -42,15 +42,19 @@ test_that("screen snapshots are deterministic and record styles in row-major run
 test_that("widget snapshots omit arbitrary and password input values", {
   password <- input(value = "not-for-export", password = TRUE, id = "secret")
   tree <- widget_snapshot(vertical(password))
-  json <- inspect_json(vertical(input(value = "another-secret", password = TRUE)))
+  json <- widget_snapshot_json(vertical(input(value = "another-secret", password = TRUE)))
   expect_false("state" %in% names(tree))
   expect_false(grepl("not-for-export|another-secret", json))
   expect_equal(tree$children[[1]]$id, "secret")
+  expect_equal(tree$schema_version, 1L)
+  expect_null(tree$children[[1]]$schema_version)
+  expect_false(exists("snapshot_json", envir = asNamespace("termr"), inherits = FALSE))
+  expect_false(exists("inspect_json", envir = asNamespace("termr"), inherits = FALSE))
 })
 
 test_that("JSON and knitr integrations work when their optional packages exist", {
   if (requireNamespace("jsonlite", quietly = TRUE)) {
-    json <- snapshot_json(label("ok"), width = 4, height = 1)
+    json <- screen_snapshot_json(label("ok"), width = 4, height = 1)
     expect_match(json, '"schema_version"')
     parsed <- jsonlite::fromJSON(json)
     expect_equal(parsed$schema_version, 1L)

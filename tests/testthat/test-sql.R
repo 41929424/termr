@@ -84,6 +84,7 @@ test_that("DBI wrapper and SQL events work with SQLite when installed", {
   skip_if_not_installed("DBI")
   skip_if_not_installed("RSQLite")
   con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+  on.exit(if (DBI::dbIsValid(con)) DBI::dbDisconnect(con), add = TRUE)
   DBI::dbWriteTable(con, "items", data.frame(id = 1:3, name = c("a", "b", "c")))
   external <- db_connection(con, name = "test")
   expect_true(external$is_valid())
@@ -145,5 +146,8 @@ test_that("owned SQL connections close when the app shuts down", {
 
 test_that("sql-workspace is registered as an example", {
   expect_true("sql-workspace" %in% run_example())
-  expect_s3_class(load_example("sql-workspace"), "App")
+  workspace <- load_example("sql-workspace")
+  expect_s3_class(workspace, "App")
+  # Starting and stopping the app closes the example's own connection.
+  test_app(workspace)$stop()
 })

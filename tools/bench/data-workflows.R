@@ -1,7 +1,8 @@
-# Run from the package root after installing this version of termr.
+# Run from the package root: Rscript tools/bench/data-workflows.R
 # Reports construction/render costs for the data workflow widgets.
 
-library(termr)
+# Benchmarks measure this checkout, never an installed (possibly older) termr.
+pkgload::load_all(".", quiet = TRUE, export_all = FALSE)
 
 elapsed <- function(expr) unname(system.time(force(expr))[["elapsed"]])
 

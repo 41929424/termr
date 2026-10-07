@@ -220,7 +220,8 @@ Pilot <- R6::R6Class(
         if (isTRUE(call_flex(condition, self$app))) return(invisible(self))
         busy <- length(self$app$workers()) > 0L
         if ((busy && now_seconds() > real_deadline) || (!busy && waited >= timeout)) {
-          stop(sprintf("wait_for(): the condition was not met within %s seconds.", format(timeout)), call. = FALSE)
+          stop(paste0(sprintf("wait_for(): the condition was not met within %s seconds.", format(timeout)),
+                      private$worker_diagnostics()), call. = FALSE)
         }
         if (busy) Sys.sleep(0.02)
         self$advance(interval)
@@ -238,7 +239,8 @@ Pilot <- R6::R6Class(
     wait_for_workers = function(timeout = 60) {
       deadline <- now_seconds() + timeout
       while (length(self$app$workers()) && !self$exited) {
-        if (now_seconds() > deadline) stop("Workers did not finish in time.", call. = FALSE)
+        if (now_seconds() > deadline) stop(paste0("Workers did not finish in time.",
+                                                private$worker_diagnostics()), call. = FALSE)
         Sys.sleep(0.05)
         self$step()
       }
@@ -271,6 +273,14 @@ Pilot <- R6::R6Class(
   ),
   private = list(
     app_private = function() self$app$.__enclos_env__$private,
+
+    worker_diagnostics = function() {
+      workers <- self$app$workers()
+      if (!length(workers)) return("")
+      paste0("\n", paste(vapply(workers, function(w) {
+        w$.__enclos_env__$private$diagnostics()
+      }, ""), collapse = "\n"))
+    },
 
     check_exit = function() {
       priv <- private$app_private()

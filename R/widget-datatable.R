@@ -207,6 +207,7 @@ DataTable <- R6::R6Class(
         private$.source_stats$cache_misses <- 0L
         private$.source_stats$rows_rendered <- 0L
         private$.source_stats$cells_rendered <- 0L
+        private$.source_stats$fetch_errors <- 0L
         names_data <- private$source_column_names()
         n <- private$source_row_count()
         seed <- if (n) private$get_source_page(1L, min(100L, n), names_data) else
@@ -281,7 +282,8 @@ DataTable <- R6::R6Class(
     #' @description Read structural fetch/cache counters for diagnostics.
     source_stats = function() {
       if (!is_table_source(private$.source)) return(list(fetch_calls = 0L, rows_requested = 0L,
-        cache_hits = 0L, cache_misses = 0L, rows_rendered = 0L, cells_rendered = 0L))
+        cache_hits = 0L, cache_misses = 0L, rows_rendered = 0L, cells_rendered = 0L,
+        fetch_errors = 0L))
       as.list.environment(private$.source_stats, all.names = TRUE)
     },
 
@@ -1112,8 +1114,16 @@ DataTable <- R6::R6Class(
                            start, count, conditionMessage(e))
         if (is.null(private$.source$on_error)) stop(message, call. = FALSE)
         failed <<- TRUE
-        private$.source_error <<- conditionMessage(e)
-        self$post_message("datatable.source_error", list(message = message, start = start, count = count))
+        root <- conditionMessage(e)
+        private$.source_stats$fetch_errors <- private$.source_stats$fetch_errors + 1L
+        # One failure (e.g. a closed connection) usually fails every page of a
+        # repaint; report it once until a fetch succeeds again.
+        repeated <- identical(private$.source_error, root)
+        private$.source_error <<- root
+        if (!repeated) {
+          self$post_message("datatable.source_error",
+                            list(message = message, error = root, start = start, count = count))
+        }
         tryCatch(private$.source$on_error(e, start, count, columns), error = function(handler_error) {
           stop(paste0(message, "; source error handler failed: ", conditionMessage(handler_error)), call. = FALSE)
         })

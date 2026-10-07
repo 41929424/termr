@@ -88,16 +88,17 @@ screen_snapshot <- function(x, width = 80, height = 24) {
 
 #' Serialize a screen snapshot as JSON
 #'
-#' Requires the optional `jsonlite` package.
+#' The JSON form of [screen_snapshot()]. Requires the optional `jsonlite`
+#' package.
 #'
 #' @inheritParams render_text
 #' @param pretty Format the JSON for readability?
 #' @return A JSON string.
 #' @export
-snapshot_json <- function(x, width = 80, height = 24, pretty = TRUE) {
+screen_snapshot_json <- function(x, width = 80, height = 24, pretty = TRUE) {
   check_flag(pretty, "pretty")
   if (!requireNamespace("jsonlite", quietly = TRUE)) {
-    stop("`snapshot_json()` requires the optional package `jsonlite`.", call. = FALSE)
+    stop("`screen_snapshot_json()` requires the optional package `jsonlite`.", call. = FALSE)
   }
   jsonlite::toJSON(unclass(screen_snapshot(x, width, height)), auto_unbox = TRUE,
     null = "null", na = "null", pretty = pretty, digits = NA)
@@ -244,19 +245,21 @@ widget_node_snapshot <- function(widget) {
 widget_snapshot <- function(x) {
   if (inherits(x, "App")) x <- x$screen
   if (!is_widget(x)) stop("`x` must be a widget, screen, or app.", call. = FALSE)
-  structure(widget_node_snapshot(x), class = "termr_widget_snapshot")
+  structure(c(list(schema_version = 1L), widget_node_snapshot(x)), class = "termr_widget_snapshot")
 }
 
 #' Serialize a structural widget snapshot as JSON
 #'
-#' Requires the optional `jsonlite` package.
+#' The JSON form of [widget_snapshot()]. Requires the optional `jsonlite`
+#' package.
 #' @param x A widget, [Screen], or [App].
 #' @param pretty Format JSON for readability?
+#' @return A JSON string.
 #' @export
-inspect_json <- function(x, pretty = TRUE) {
+widget_snapshot_json <- function(x, pretty = TRUE) {
   check_flag(pretty, "pretty")
   if (!requireNamespace("jsonlite", quietly = TRUE)) {
-    stop("`inspect_json()` requires the optional package `jsonlite`.", call. = FALSE)
+    stop("`widget_snapshot_json()` requires the optional package `jsonlite`.", call. = FALSE)
   }
   jsonlite::toJSON(unclass(widget_snapshot(x)), auto_unbox = TRUE, null = "null",
     na = "null", pretty = pretty)
@@ -293,7 +296,7 @@ write_rendered <- function(x, file, format = c("text", "markdown", "html", "svg"
     markdown = render_markdown(x, width, height),
     html = render_html(x, width, height),
     svg = render_svg(x, width, height),
-    json = as.character(snapshot_json(x, width, height)))
+    json = as.character(screen_snapshot_json(x, width, height)))
   writeLines(output, file, useBytes = TRUE)
   invisible(file)
 }

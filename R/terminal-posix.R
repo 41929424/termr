@@ -49,7 +49,7 @@ PosixDriver <- R6::R6Class(
       private$stty("raw -echo")
       private$reader <- tryCatch(
         process$new("cat", stdin = private$terminal_path, stdout = "|", stderr = NULL,
-                    cleanup = TRUE, cleanup_tree = TRUE),
+                    encoding = "UTF-8", cleanup = TRUE, cleanup_tree = TRUE),
         error = function(e) {
           # Some process supervisors detach their children from the
           # controlling-terminal session. In that case /dev/tty cannot be
@@ -58,7 +58,7 @@ PosixDriver <- R6::R6Class(
           if (private$terminal_path == "/dev/tty" && posix_stdin_is_tty()) {
             tryCatch(
               process$new("cat", stdin = "/dev/stdin", stdout = "|", stderr = NULL,
-                          cleanup = TRUE, cleanup_tree = TRUE),
+                          encoding = "UTF-8", cleanup = TRUE, cleanup_tree = TRUE),
               error = function(fallback_error) {
                 stop("Cannot start the terminal input reader: /dev/tty could not be reopened and the stdin TTY fallback failed: ",
                      conditionMessage(fallback_error), call. = FALSE)

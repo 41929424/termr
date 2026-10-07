@@ -137,6 +137,7 @@ test_that("a failing process fails with its status; a missing program errors", {
   pilot$wait_for_workers(60)
   expect_identical(w$state, "failed")
   expect_match(msg, "status 3")
+  expect_match(msg, "PID=[0-9]+; executable=.*state=exited.*exit_status=3")
   expect_identical(status, 3L)
   expect_error(a$run_process("definitely-not-a-program-xyz"), "Could not start")
   expect_error(a$run_process(c("a", "b")), "command")
@@ -181,7 +182,7 @@ test_that("Pilot$run_worker waits for the result", {
   streamed <- pilot$app$run_worker(function() cat("tick\n"), on_stdout = function(line, app) seen <<- c(seen, line))
   # If the child dies before stdout reaches the callback, stop at that point
   # and report its diagnostics instead of timing out on a generic predicate.
-  pilot$wait_for(function(app) length(seen) > 0L || !streamed$is_running(), timeout = 30)
+  pilot$wait_for(function(app) !streamed$is_running(), timeout = 30)
   expect_identical(seen, "tick")
   expect_identical(streamed$state, "completed")
   expect_identical(completed, streamed)
@@ -193,12 +194,25 @@ test_that("installed worker helper and R CMD check startup hooks are safe", {
 
   old <- Sys.getenv("R_TESTS", unset = NA_character_)
   on.exit(if (is.na(old)) Sys.unsetenv("R_TESTS") else Sys.setenv(R_TESTS = old), add = TRUE)
-  Sys.setenv(R_TESTS = "termr-check-hook-must-not-run.R")
+  hook <- tempfile(fileext = ".R")
+  marker <- tempfile()
+  on.exit(unlink(c(hook, marker)), add = TRUE)
+  writeLines(sprintf("writeLines('startup hook ran', %s)", deparse(marker)), hook)
+  Sys.setenv(R_TESTS = hook)
+
+  # Confirm that this hook actually executes in a contaminated Rscript.
+  contaminated <- processx::run(rscript(), c("--vanilla", "-e", "invisible(NULL)"),
+                               error_on_status = FALSE)
+  expect_identical(contaminated$status, 0L)
+  expect_true(file.exists(marker))
+  unlink(marker)
 
   pilot <- test_app(app(label("x")), 20, 2)
   w <- pilot$run_worker(function() Sys.getenv("R_TESTS"))
   expect_identical(w$state, "completed")
   expect_identical(w$result, "")
+  expect_false(file.exists(marker))
+  pilot$stop()
 })
 
 test_that("a crashed worker reports stderr and exit status promptly", {
@@ -215,9 +229,81 @@ test_that("a crashed worker reports stderr and exit status promptly", {
   expect_identical(w$state, "failed")
   expect_match(w$error, "status 23")
   expect_match(w$error, "worker crash diagnostic")
+  expect_match(w$error, "PID=[0-9]+; executable=.*Rscript")
+  expect_match(w$error, "state=exited.*exit_status=23; result_exists=FALSE")
   expect_identical(w$stderr, "worker crash diagnostic")
   expect_length(a$workers(), 0L)
   expect_false(w$.__enclos_env__$private$process$is_alive())
+})
+
+test_that("installed workers use parent library paths from an unrelated cwd", {
+  library_path <- tempfile("termr-worker-library-")
+  dir.create(library_path)
+  r6 <- find.package("R6")
+  expect_true(file.copy(r6, library_path, recursive = TRUE))
+  old_libs <- .libPaths()
+  on.exit({ .libPaths(old_libs); unlink(library_path, recursive = TRUE) }, add = TRUE)
+  .libPaths(c(library_path, old_libs))
+  withr::local_dir(tempdir())
+  pilot <- test_app(app(label("x")), 20, 2)
+  on.exit(pilot$stop(), add = TRUE)
+  w <- pilot$run_worker(function() list(path = find.package("R6"), tty = isatty(stdin())),
+                        packages = "R6")
+  expect_identical(w$state, "completed")
+  expect_identical(normalizePath(w$result$path), normalizePath(file.path(library_path, "R6")))
+  # Windows CRT reports the NUL character device as a TTY. The processx
+  # stdin configuration is portable; the real Unix PTY asserts isatty too.
+  expect_null(w$.__enclos_env__$private$process$get_input_file())
+  if (.Platform$OS.type != "windows") expect_false(w$result$tty)
+})
+
+test_that("an exited worker without a result is removed even at status zero", {
+  pilot <- test_app(app(label("x")), 20, 2)
+  on.exit(pilot$stop(), add = TRUE)
+  w <- pilot$app$run_worker(function() quit(save = "no", status = 0L, runLast = FALSE))
+  pilot$wait_for_workers(10)
+  expect_identical(w$state, "failed")
+  expect_match(w$error, "status 0 without a valid result")
+  expect_match(w$error, "result_exists=FALSE")
+  expect_length(pilot$app$workers(), 0L)
+})
+
+test_that("Pilot timeouts include bounded process diagnostics", {
+  pilot <- test_app(app(label("x")), 20, 2)
+  on.exit(pilot$stop(), add = TRUE)
+  w <- pilot$app$run_worker(function() Sys.sleep(60))
+  expect_error(pilot$wait_for_workers(0), "PID=[0-9]+; executable=.*state=alive.*result_exists=FALSE")
+  expect_error(pilot$wait_for(function(app) FALSE, timeout = 0), "PID=[0-9]+; executable=")
+  w$cancel(grace = 0)
+  pilot$step()
+  expect_length(pilot$app$workers(), 0L)
+})
+
+test_that("an exited worker cannot hang polling on a descendant-held pipe", {
+  pilot <- test_app(app(label("x")), 20, 2)
+  on.exit(pilot$stop(), add = TRUE)
+  marker <- tempfile()
+  on.exit(unlink(marker), add = TRUE)
+  w <- pilot$app$run_worker(function(marker) {
+    child <- processx::process$new(
+      file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript"),
+      c("--vanilla", "-e", "Sys.sleep(5)"), stdin = NULL, stdout = "", stderr = "",
+      env = c("current", R_TESTS = ""), cleanup = FALSE, cleanup_tree = FALSE)
+    writeLines(as.character(child$get_pid()), marker)
+    quit(save = "no", status = 0L, runLast = FALSE)
+  }, args = list(marker = marker))
+  p <- w$.__enclos_env__$private$process
+  on.exit(p$kill_tree(), add = TRUE)
+  p$wait(5000)
+  expect_false(p$is_alive())
+  expect_true(file.exists(marker))
+  expect_true(p$is_incomplete_output())
+  started <- now_seconds()
+  pilot$wait_for_workers(5)
+  expect_lt(now_seconds() - started, 2)
+  expect_identical(w$state, "failed")
+  expect_length(pilot$app$workers(), 0L)
+  expect_length(p$kill_tree(), 0L) # No orphan descendant remains.
 })
 
 test_that("inline workers still fire callbacks and keep the app unreferenced", {
@@ -226,4 +312,20 @@ test_that("inline workers still fire callbacks and keep the app unreferenced", {
   w <- a$run_worker(function() 5, inline = TRUE)
   expect_identical(w$result, 5)
   expect_null(w$.__enclos_env__$private$app)
+})
+
+test_that("a finite output backlog is fully delivered after process exit", {
+  pilot <- test_app(app(label("x")), 20, 2)
+  on.exit(pilot$stop(), add = TRUE)
+  count <- 0L
+  w <- pilot$app$run_worker(function() cat(paste0(seq_len(5000), "\n"), sep = ""),
+                            on_stdout = function(line, app) count <<- count + 1L)
+  # Let output accumulate before polling; Unix pipe backpressure may keep
+  # the producer alive, while Windows can buffer the entire payload.
+  w$.__enclos_env__$private$process$wait(1000)
+  pilot$wait_for_workers(10)
+  expect_identical(w$state, "completed")
+  expect_identical(count, 5000L)
+  expect_identical(tail(w$stdout, 1L), "5000")
+  expect_length(w$stdout, 1000L)
 })

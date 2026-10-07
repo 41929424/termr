@@ -151,6 +151,50 @@ csi_tilde_keys <- c(
 
 max_csi_length <- 64L
 
+# Decode terminal bytes before any locale-dependent character conversion.
+# Retain a valid incomplete prefix; consume only the malformed prefix so the
+# next ASCII key (or UTF-8 lead byte) can still be parsed.
+decode_input_utf8 <- function(bytes, final = FALSE) {
+  if (!length(bytes)) return(list(text = "", pending = raw()))
+  if (!any(bytes == as.raw(0))) {
+    text <- rawToChar(bytes)
+    if (validUTF8(text)) {
+      Encoding(text) <- "UTF-8"
+      return(list(text = text, pending = raw()))
+    }
+  }
+  b <- as.integer(bytes)
+  code <- integer(length(b))
+  i <- 1L
+  used <- 0L
+  while (i <= length(b)) {
+    first <- b[[i]]
+    size <- if (first < 128L && first > 0L) 1L else if (first >= 194L && first <= 223L) 2L else
+      if (first >= 224L && first <= 239L) 3L else if (first >= 240L && first <= 244L) 4L else 0L
+    value <- if (size == 1L) first else if (size > 1L) first %% (2^(7L - size)) else 65533L
+    count <- 1L
+    if (size > 1L) {
+      while (count < size && i + count <= length(b)) {
+        next_byte <- b[[i + count]]
+        low <- if (count == 1L && first == 224L) 160L else if (count == 1L && first == 240L) 144L else 128L
+        high <- if (count == 1L && first == 237L) 159L else if (count == 1L && first == 244L) 143L else 191L
+        if (next_byte < low || next_byte > high) break
+        value <- value * 64L + next_byte - 128L
+        count <- count + 1L
+      }
+      if (count < size) {
+        if (!final && i + count > length(b)) break
+        value <- 65533L
+      }
+    }
+    used <- used + 1L
+    code[[used]] <- value
+    i <- i + count
+  }
+  list(text = intToUtf8(code[seq_len(used)]),
+       pending = if (i <= length(bytes)) bytes[i:length(bytes)] else raw())
+}
+
 # Incremental parser for terminal input (UTF-8 text with escape sequences).
 # Incomplete escape sequences are kept until more input arrives; a lone
 # ESC is reported as "escape" by flush() when no more input follows.
@@ -166,10 +210,30 @@ KeyParser <- R6::R6Class(
     paste_tail = "",
 
     feed = function(text) {
-      text <- enc2utf8(text)
-      # Bytes that are not UTF-8 (8-bit meta keys, non-UTF-8 locales) become
-      # U+FFFD instead of breaking the parser.
-      if (!validUTF8(text)) text <- iconv(text, "UTF-8", "UTF-8", sub = "\ufffd")
+      bytes <- if (is.raw(text)) text else charToRaw(text)
+      decoded <- decode_input_utf8(c(private$pending_bytes, bytes))
+      private$pending_bytes <- decoded$pending
+      private$feed_text(decoded$text)
+    },
+
+    has_pending = function() nzchar(self$pending) || length(private$pending_bytes) > 0L,
+
+    flush = function() {
+      decoded <- decode_input_utf8(private$pending_bytes, final = TRUE)
+      private$pending_bytes <- raw()
+      events <- private$feed_text(decoded$text)
+      pending <- self$pending
+      self$pending <- ""
+      if (!nzchar(pending)) return(events)
+      if (pending == "\033") return(c(events, list(make_key("escape"))))
+      # An incomplete sequence: report ESC, then parse the rest as text.
+      c(events, list(make_key("escape")), private$feed_text(substring(pending, 2L)))
+    }
+  ),
+  private = list(
+    pending_bytes = raw(),
+
+    feed_text = function(text) {
       events <- list()
       if (self$in_paste) {
         res <- private$feed_paste(text)
@@ -193,26 +257,13 @@ KeyParser <- R6::R6Class(
           self$paste_chunks <- character()
           self$paste_tail <- ""
           rest <- if (res$next_i <= n) paste(chars[res$next_i:n], collapse = "") else ""
-          return(c(events, self$feed(rest)))
+          return(c(events, private$feed_text(rest)))
         }
         if (!is.null(res$event)) events[[length(events) + 1L]] <- res$event
         i <- res$next_i
       }
       events
     },
-
-    has_pending = function() nzchar(self$pending),
-
-    flush = function() {
-      pending <- self$pending
-      self$pending <- ""
-      if (!nzchar(pending)) return(list())
-      if (pending == "\033") return(list(make_key("escape")))
-      # An incomplete sequence: report ESC, then parse the rest as text.
-      c(list(make_key("escape")), self$feed(substring(pending, 2L)))
-    }
-  ),
-  private = list(
     # Collect pasted text; returns the finished PasteEvent (if the closing
     # marker was seen) and the text that follows it.
     feed_paste = function(text) {

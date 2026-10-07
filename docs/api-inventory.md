@@ -97,7 +97,6 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 | `grid_layout` | function | [widget-containers.R](../R/widget-containers.R#L81) | [yes](../man/grid_layout.Rd) | yes | yes | docs, examples, tests |
 | `horizontal` | function | [widget-containers.R](../R/widget-containers.R#L114) | [yes](../man/vertical.Rd) | yes | yes | README, docs, examples, tests |
 | `input` | function | [widget-input.R](../R/widget-input.R#L479) | [yes](../man/input.Rd) | yes | yes | README, docs, examples, tests |
-| `inspect_json` | helper | [export.R](../R/export.R#L253) | [yes](../man/inspect_json.Rd) | yes | no | docs, tests |
 | `inspect_signal` | helper | [signals.R](../R/signals.R#L334) | [yes](../man/inspect_signal.Rd) | yes | no | docs, tests |
 | `inspect_widget` | helper | [devtools.R](../R/devtools.R#L18) | [yes](../man/inspect_widget.Rd) | yes | yes | docs, tests |
 | `json_view` | function | [widget-workflows.R](../R/widget-workflows.R#L555) | [yes](../man/json_view.Rd) | yes | yes | docs, tests |
@@ -138,11 +137,11 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 | `run_worker` | function | [workers.R](../R/workers.R#L370) | [yes](../man/run_worker.Rd) | yes | yes | README, docs, examples, tests |
 | `screen_buffer` | helper | [screen-buffer.R](../R/screen-buffer.R#L263) | [yes](../man/screen_buffer.Rd) | yes | yes | examples, tests |
 | `screen_snapshot` | helper | [export.R](../R/export.R#L82) | [yes](../man/screen_snapshot.Rd) | yes | yes | docs, tests |
+| `screen_snapshot_json` | helper | [export.R](../R/export.R#L98) | [yes](../man/screen_snapshot_json.Rd) | yes | no | docs, tests |
 | `scroll_view` | function | [widget-scroll.R](../R/widget-scroll.R#L305) | [yes](../man/scroll_view.Rd) | yes | yes | README, docs, examples, tests |
 | `set_interval` | function | [app.R](../R/app.R#L1114) | [yes](../man/set_timeout.Rd) | yes | yes | docs, examples, tests |
 | `set_timeout` | function | [app.R](../R/app.R#L1108) | [yes](../man/set_timeout.Rd) | yes | yes | docs, tests |
 | `signal` | function | [signals.R](../R/signals.R#L210) | [yes](../man/signals.Rd) | yes | yes | README, docs, examples, tests |
-| `snapshot_json` | helper | [export.R](../R/export.R#L97) | [yes](../man/snapshot_json.Rd) | yes | no | docs, tests |
 | `span` | function | [span.R](../R/span.R#L21) | [yes](../man/span.Rd) | yes | yes | docs, examples, tests |
 | `sparkline` | function | [widget-display.R](../R/widget-display.R#L384) | [yes](../man/sparkline.Rd) | yes | yes | README, docs, examples, tests |
 | `spinner` | function | [widget-display.R](../R/widget-display.R#L206) | [yes](../man/spinner.Rd) | yes | yes | README, docs, examples, tests |
@@ -171,6 +170,7 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 | `watch` | function | [signals.R](../R/signals.R#L247) | [yes](../man/signals.Rd) | yes | yes | README, docs, examples, tests |
 | `widget` | function | [widget-factory.R](../R/widget-factory.R#L44) | [yes](../man/widget.Rd) | yes | yes | README, docs, examples, tests |
 | `widget_snapshot` | helper | [export.R](../R/export.R#L241) | [yes](../man/widget_snapshot.Rd) | yes | no | docs, tests |
+| `widget_snapshot_json` | helper | [export.R](../R/export.R#L259) | [yes](../man/widget_snapshot_json.Rd) | yes | no | docs, tests |
 | `write_rendered` | helper | [export.R](../R/export.R#L284) | [yes](../man/write_rendered.Rd) | yes | no | docs, examples, tests |
 
 ## Registered S3 methods
@@ -245,7 +245,7 @@ These exported names share topics or neighboring roles; none is marked deprecate
 - `set_timeout()` / `set_interval()` are paired timer helpers.
 - `stylesheet()` / `stylesheet_file()` parse stylesheet text or a file.
 - `render_text()` / `render_lines()` overlap; one returns a newline-joined scalar, the other a vector of lines. `render_widget()` returns the lower-level `ScreenBuffer`.
-- `inspect_widget()`, `widget_snapshot()`, and `inspect_json()` cover rich inspection, a redacted structural snapshot, and JSON serialization of that snapshot.
+- `inspect_widget()`, `widget_snapshot()`, and `widget_snapshot_json()` cover rich inspection, a redacted structural snapshot, and JSON serialization of that snapshot; `screen_snapshot()` / `screen_snapshot_json()` are the same pair for the rendered screen.
 - `table_source()` is the generic source protocol; `db_table_source()` supplies the SQLite/DB-backed adapter.
 - Related highlighters use different naming patterns: `r_highlighter()` and `sql_highlighter()`; `sql_editor()` consumes the latter.
 - `app()` constructs an `App`; `run()` starts it. `ScreenBuffer` / `screen_buffer()` similarly pair a class and factory.
@@ -263,7 +263,7 @@ No `TODO`, `FIXME`, `HACK`, or `XXX` markers were found in `R/`, `tests/`, or `d
 
 - `24` direct exports have no textual reference in README/docs/examples/tests: `Animation`, `BlurEvent`, `Checkbox`, `FocusEvent`, `KeyValue`, `MarkdownView`, `Metric`, `MountEvent`, `OptionList`, `ProcessView`, `ProgressBar`, `RadioButton`, `RadioSet`, `Rule`, `Sparkline`, `Spinner`, `SplitHandle`, `SplitPane`, `TabPane`, `Timer`, `Toast`, `TreeNode`, `TreeView`, `UnmountEvent`.
   All are R6 class names; several are returned by constructors or represent event/widget types. This is a ?no direct reference? metric, not evidence that the classes are dead.
-- `72` exported symbols lack examples in Rd (including `DataProfile`, `PropertyGrid`, `StatusBar` and `db_query_source`, added in 0.9): `Animation`, `App`, `BlurEvent`, `Button`, `Checkbox`, `DataTable`, `Event`, `FocusEvent`, `Grid`, `Horizontal`, `Input`, `KeyEvent`, `KeyValue`, `Label`, `LogView`, `MarkdownView`, `MessageEvent`, `Metric`, `ModalScreen`, `MountEvent`, `MouseEvent`, `OptionList`, `Panel`, `PasteEvent`, `ProcessView`, `ProgressBar`, `RadioButton`, `RadioSet`, `ResizeEvent`, `Rule`, `Screen`, `ScreenBuffer`, `ScrollView`, `Select`, `Sparkline`, `Spinner`, `SplitHandle`, `SplitPane`, `TabPane`, `Tabs`, `TextArea`, `Timer`, `Toast`, `TreeNode`, `TreeView`, `UnmountEvent`, `Vertical`, `Widget`, `Worker`, `current_app`, `db_connection`, `db_metadata`, `db_table_source`, `inspect_json`, `inspect_signal`, `knit_termr`, `r_highlighter`, `register_layout`, `render_svg`, `run`, `snapshot_json`, `sql_editor`, `sql_highlighter`, `table_filter`, `table_source`, `unregister_layout`, `widget_snapshot`, `write_rendered`.
+- `72` exported symbols lack examples in Rd (including `DataProfile`, `PropertyGrid`, `StatusBar` and `db_query_source`, added in 0.9): `Animation`, `App`, `BlurEvent`, `Button`, `Checkbox`, `DataTable`, `Event`, `FocusEvent`, `Grid`, `Horizontal`, `Input`, `KeyEvent`, `KeyValue`, `Label`, `LogView`, `MarkdownView`, `MessageEvent`, `Metric`, `ModalScreen`, `MountEvent`, `MouseEvent`, `OptionList`, `Panel`, `PasteEvent`, `ProcessView`, `ProgressBar`, `RadioButton`, `RadioSet`, `ResizeEvent`, `Rule`, `Screen`, `ScreenBuffer`, `ScrollView`, `Select`, `Sparkline`, `Spinner`, `SplitHandle`, `SplitPane`, `TabPane`, `Tabs`, `TextArea`, `Timer`, `Toast`, `TreeNode`, `TreeView`, `UnmountEvent`, `Vertical`, `Widget`, `Worker`, `current_app`, `db_connection`, `db_metadata`, `db_table_source`, `inspect_signal`, `knit_termr`, `r_highlighter`, `register_layout`, `render_svg`, `run`, `screen_snapshot_json`, `sql_editor`, `sql_highlighter`, `table_filter`, `table_source`, `unregister_layout`, `widget_snapshot`, `widget_snapshot_json`, `write_rendered`.
 - `0` exported symbols lack Rd usage: none.
 
 ## Reproduction

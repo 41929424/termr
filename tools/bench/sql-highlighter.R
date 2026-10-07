@@ -1,7 +1,8 @@
 # Lightweight SQL tokenizer timing by document size.
 # Run from the package root with: Rscript tools/bench/sql-highlighter.R
 
-library(termr)
+# Benchmarks measure this checkout, never an installed (possibly older) termr.
+pkgload::load_all(".", quiet = TRUE, export_all = FALSE)
 
 for (n in c(100L, 1000L, 10000L)) {
   lines <- rep("SELECT id, name FROM users WHERE score >= 3.14 AND active = TRUE; -- sample", n)

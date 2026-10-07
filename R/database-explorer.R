@@ -56,7 +56,8 @@ db_metadata <- function(connection) {
 #' if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("RSQLite", quietly = TRUE)) {
 #'   con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
 #'   DBI::dbWriteTable(con, "mtcars", mtcars)
-#'   app(db_explorer(db_connection(con, owned = TRUE)))
+#'   pilot <- test_app(app(db_explorer(db_connection(con, owned = TRUE))))
+#'   pilot$stop() # App teardown closes its owned connection.
 #' }
 db_explorer <- function(connection, id = NULL) {
   DatabaseExplorer$new(connection = connection, id = id)

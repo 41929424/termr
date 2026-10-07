@@ -57,6 +57,15 @@ Events (bubbling from the owner widget or the screen, `event$data$worker`):
 `worker.started`, `worker.progress`, `worker.stdout`, `worker.stderr`,
 `worker.completed`, `worker.failed` (`timed_out`, `status`), `worker.cancelled`.
 
+## Secrets and temporary files
+
+A worker job (the function, including its closure environment, and `args`)
+is serialized to a temporary file that the worker process reads; the file is
+removed when the worker ends. Workers and `run_process()` programs inherit
+the app's environment variables. Avoid putting secrets into worker closures
+or arguments unnecessarily, and pass only the variables a program needs
+through `env` rather than exporting them globally.
+
 ## `process_view()`
 
 A ready-made widget: status line plus scrolling log for one program;

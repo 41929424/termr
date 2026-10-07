@@ -266,16 +266,23 @@ layout_algorithms <- list2env(list(
 #'   [region()] per child.
 #' @param measure `function(children, parent_style)` returning `width()` and
 #'   `height(width)` functions.
+#' @param replace Replace an existing registration of `name`? Packages that
+#'   register in `.onLoad()` can pass `TRUE` so that reloading them works.
+#'   Built-in layouts can never be replaced (their names do not start with
+#'   `custom_`).
 #' @return The registered name, invisibly.
 #' @export
-register_layout <- function(name, arrange, measure) {
+register_layout <- function(name, arrange, measure, replace = FALSE) {
   check_scalar_character(name, "name")
   if (!grepl("^custom_[a-z][a-z0-9_]*$", name)) {
     stop("Custom layout names must start with `custom_` and use lowercase letters, digits, and underscores.", call. = FALSE)
   }
-  if (exists(name, layout_algorithms, inherits = FALSE)) stop(sprintf("Layout `%s` is already registered.", name), call. = FALSE)
+  check_flag(replace, "replace")
   check_function(arrange, "arrange")
   check_function(measure, "measure")
+  if (!replace && exists(name, layout_algorithms, inherits = FALSE)) {
+    stop(sprintf("Layout `%s` is already registered; use `replace = TRUE` to replace it.", name), call. = FALSE)
+  }
   assign(name, list(arrange = arrange, measure = measure), envir = layout_algorithms)
   invisible(name)
 }

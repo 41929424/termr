@@ -70,3 +70,35 @@ test_that("an endless CSI sequence is dropped instead of buffered", {
   expect_lt(nchar(p$pending), 100L)
   expect_identical(describe_events(p$feed("\u001b[A")), "key:up")
 })
+
+test_that("UTF-8 decoding resynchronizes without locale conversions", {
+  replacement <- "key:\ufffd"
+  for (bad in list(c(0xff), c(0xe2, 0x82), c(0xe2, 0x28),
+                   c(0xc0, 0xaf), c(0xed, 0xa0, 0x80), c(0xf4, 0x90, 0x80, 0x80))) {
+    bytes <- as.raw(c(0x61, bad, 0x62))
+    keys <- parse_stream(list(bytes))
+    expect_identical(keys[[1]], "key:a")
+    expect_identical(tail(keys, 1), "key:b")
+    expect_true(replacement %in% keys)
+    # Splitting at any byte preserves both replacement policy and keys.
+    for (cut in seq_len(length(bytes) - 1L)) {
+      expect_identical(parse_stream(list(bytes[seq_len(cut)], bytes[(cut + 1L):length(bytes)])), keys)
+    }
+  }
+  p <- KeyParser$new()
+  expect_length(p$feed(as.raw(c(0xe2, 0x82))), 0L)
+  expect_true(p$has_pending())
+  expect_identical(describe_events(p$flush()), replacement)
+  expect_false(p$has_pending())
+  expect_identical(describe_events(p$feed("b")), "key:b")
+})
+
+test_that("valid UTF-8 and bracketed paste survive splitting at every byte", {
+  text <- "a\u00e9\u20ac\U0001f600\u001b[200~\u20ac\u001b[201~b"
+  bytes <- charToRaw(enc2utf8(text))
+  reference <- parse_stream(text)
+  expect_identical(parse_stream(as.list(bytes)), reference)
+  for (cut in seq_len(length(bytes) - 1L)) {
+    expect_identical(parse_stream(list(bytes[seq_len(cut)], bytes[(cut + 1L):length(bytes)])), reference)
+  }
+})

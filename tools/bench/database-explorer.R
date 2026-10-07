@@ -5,7 +5,8 @@ if (!requireNamespace("DBI", quietly = TRUE) || !requireNamespace("RSQLite", qui
   stop("Install DBI and RSQLite to run this benchmark.", call. = FALSE)
 }
 
-library(termr)
+# Benchmarks measure this checkout, never an installed (possibly older) termr.
+pkgload::load_all(".", quiet = TRUE, export_all = FALSE)
 con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
 
 make_catalog <- function(n) {

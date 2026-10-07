@@ -36,6 +36,63 @@ the target of a key or mouse event.
 
 Send your own messages: `self$post_message("cart.updated", list(total = 10))`.
 
+## Widget and subsystem messages
+
+These are all the messages termr itself posts. Each is a `MessageEvent`
+whose `sender` is the widget named in the first column; it bubbles from the
+sender through its ancestors to the app unless a handler calls
+`event$stop()`. Handlers run after the change has happened, so stopping a
+message only stops other handlers from seeing it; it does not undo or cancel
+the change.
+
+**The names below are a frozen public contract.** They follow different
+conventions for historical reasons (`datatable.`, `textarea.` and
+`splitpane.` versus `option_list.`, `radio_set.` and `db_explorer.`, short
+`tree.` and `scroll.`) and are kept exactly as listed. New fields may be
+added to `event$data`; documented fields are not removed or renamed within a
+major version.
+
+| Sender | Message | `event$data` fields |
+|---|---|---|
+| `button()` | `button.pressed` | `label` |
+| `checkbox()` | `checkbox.changed` | `value` |
+| `radio_set()` | `radio_set.changed` | `value`, `index`, `label` |
+| `dropdown()` | `dropdown.changed` | `value`, `label` (`NULL` when cleared) |
+| `option_list()` | `option_list.highlighted`, `option_list.selected` | `index`, `value`, `label` |
+| `input()` | `input.changed`, `input.submitted` | `value`, `valid` |
+| `input()` | `input.valid`, `input.invalid` (when validity changes) | `value`, `error` |
+| `text_area()` | `textarea.changed` | `version`, `lines`, `valid` |
+| `text_area()` | `textarea.valid`, `textarea.invalid` (when validity changes) | `error` |
+| `text_area()` | `textarea.selection_changed` | `empty`, `start_row`, `start_column`, `end_row`, `end_column` (`NULL` when empty) |
+| `tabs()` | `tabs.changed` | `index`, `previous`, `id`, `label` |
+| `split_pane()` | `splitpane.resized` | `ratio` |
+| `scroll_view()` | `scroll.changed` | `x`, `y` (offsets) |
+| `tree_view()` | `tree.node_selected`, `tree.node_activated`, `tree.node_expanded`, `tree.node_collapsed` | `node`, `label`, `data`, `id` |
+| `data_table()` | `datatable.row_selected` (row cursor), `datatable.cell_selected` (cell cursor), `datatable.row_activated` | `row`, `position`, `value` (row as a list, or the cell value); `column` for cells |
+| `data_table()` | `datatable.header_selected` | `column`, `index` |
+| `data_table()` | `datatable.sorted` | `columns`, `decreasing` |
+| `data_table()` | `datatable.found` | `position`, `row`, `column` |
+| `data_table()` | `datatable.column_resized` | `column`, `width` (both `NULL` after auto-sizing every column) |
+| `data_table()` | `datatable.columns_changed` | `column`, `visible` |
+| `data_table()` | `datatable.columns_reordered` | `column`, `from`, `to` |
+| `data_table()` | `datatable.cell_changed` | `row`, `column`, `old`, `value` |
+| `data_table()` with a table source | `datatable.source_error` (once per failure, until a fetch succeeds) | `message`, `error` (root cause), `start`, `count` |
+| `process_view()` | `process.finished` | `status`, `state` |
+| `sql_editor()` | `sql.query_started` | `sql` |
+| `sql_editor()` | `sql.query_completed` | `sql`, `elapsed`, `elapsed_ms`, `rows`, `result`, `result_type` (`"data"` or `"source"`), `source` |
+| `sql_editor()` | `sql.query_failed` | `sql`, `error` (condition), `message`, and `elapsed`, `elapsed_ms` when a query ran |
+| `db_explorer()` | `db_explorer.query_completed` | `sql`, `timestamp`, `elapsed_ms`, `ok`, `rows`, `result_type` |
+| `db_explorer()` | `db_explorer.query_failed` | `sql`, `timestamp`, `elapsed_ms`, `ok`, `rows`, `error` |
+| worker owner, or none | `worker.started`, `worker.cancelled` | `worker` |
+| worker owner, or none | `worker.stdout`, `worker.stderr` | `worker`, `line` |
+| worker owner, or none | `worker.progress` | `worker`, `value`, `message` |
+| worker owner, or none | `worker.completed` | `worker`, `result` |
+| worker owner, or none | `worker.failed` | `worker`, `error`, `timed_out`, `status` |
+
+Worker messages come from the widget that owns the worker, or have no sender
+(and start at the screen) when the worker has no owner in the app.
+`app$post_message()` posts an application message with no sender.
+
 ## Key names
 
 Printable characters are named by themselves (`"a"`, `"A"`, `"?"`, also
@@ -83,6 +140,10 @@ first move, `drag.move` on every move, `drag.end` on release; they carry the
 origin of the drag. `widget$capture_mouse()` sends *all* mouse events to a widget
 until `widget$release_mouse()` or the next release. Handle them with
 `on_drag_move(event)` methods or `widget$on("drag.move", ...)`.
+
+For compatibility with the existing event model, releasing the same button
+over the original target emits `click`, including after a drag. Releasing
+outside that target does not. `drag.end` precedes that click.
 
 ## Paste
 

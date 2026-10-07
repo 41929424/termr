@@ -49,7 +49,7 @@ More precisely, termr does not require transferring source datasets to the
 client machine; the terminal output selected for display travels through the
 SSH session. If OSC 52 is enabled, an explicit copy action can also send the
 selected text toward the client clipboard. Exports such as `render_text()`,
-`render_html()`, `render_svg()`, and `snapshot_json()` return values in remote
+`render_html()`, `render_svg()`, and `screen_snapshot_json()` return values in remote
 R; file-writing helpers write to the remote filesystem unless the caller
 explicitly transfers the file separately.
 

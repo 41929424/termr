@@ -172,3 +172,28 @@ test_that("database explorer surfaces lazy query fetch errors without crashing",
   pilot$stop()
 })
 
+
+test_that("one failing connection is reported once, with the root error kept", {
+  skip_if_not_installed("DBI")
+  skip_if_not_installed("RSQLite")
+  con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+  DBI::dbWriteTable(con, "items", data.frame(id = 1:250))
+  explorer <- db_explorer(db_connection(con))
+  explorer$sql$set_text("SELECT id FROM items")
+  expect_true(explorer$run_query()$ok)
+  events <- list()
+  a <- app(explorer, on("datatable.source_error", function(event, app) events[[length(events) + 1L]] <<- event$data))
+  pilot <- test_app(a, width = 70, height = 20)
+  on.exit(pilot$stop(), add = TRUE)
+  explorer$tabs$activate("db_sql_tab")
+  pilot$step()
+  DBI::dbDisconnect(con)
+  # The viewport now needs two pages (rows 101-200 and 201-250); both fail.
+  explorer$query_results$scroll_to_row(200L)
+  pilot$step()
+  pilot$step()
+  expect_length(events, 1L)
+  expect_match(events[[1]]$error, "no longer valid")
+  expect_length(Filter(function(t) grepl("fetch failed", t$text), a$notifications()), 1L)
+  expect_gte(explorer$query_results$source_stats()$fetch_errors, 2L)
+})

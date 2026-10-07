@@ -56,8 +56,9 @@ NEWS and in [migration notes](migration-to-1.0.md).
 - Workflow widgets added in 0.9: `status_bar()`, `property_grid()`,
   `record_view()`, `data_profile()`, `json_view()` and their classes.
 - Static export and serialization: `render_markdown()`, `render_html()`,
-  `render_svg()`, `snapshot_json()`, `inspect_json()`, `widget_snapshot()`,
-  `screen_snapshot()`, `knit_termr()`, and `write_rendered()`.
+  `render_svg()`, `screen_snapshot()`, `screen_snapshot_json()`,
+  `widget_snapshot()`, `widget_snapshot_json()`, `knit_termr()`, and
+  `write_rendered()`.
 - Diagnostic and low-level rendering APIs such as `inspect_widget()`,
   `inspect_signal()`, `patch_to_ansi()`, and `diff_screen()`.
 
@@ -93,8 +94,12 @@ Experimental APIs are excluded: they may change in a minor release, with a
 NEWS entry, and without a deprecation period when one is impractical. An
 experimental API becomes stable by being moved to the stable list here.
 
-Event names and the fields of `event$data` documented for stable widgets are
-part of the stable API, as are the documented key bindings and command names.
+Event names and the fields of `event$data` listed in the
+[event reference](events.md#widget-and-subsystem-messages) are frozen as they
+are: names are not renamed, and documented fields are not removed or renamed
+within a major version (new fields may be added). This holds for messages of
+experimental widgets too, as long as the widget exists. Documented key
+bindings and command names are stable as well.
 
 Snapshot formats carry a `schema_version`. Adding fields does not change it;
 renaming, removing or re-typing a field increments it, in a minor release at
@@ -111,7 +116,10 @@ The existing snake_case constructors correspond to CamelCase R6 classes.
 Paired names such as `vertical()` / `horizontal()`, `tabs()` / `tab()`, and
 `run_worker()` / `run_process()` describe related operations rather than
 deprecated aliases. `browse_data()` and `data_browser()` also have different
-return behavior. No exported name is currently deprecated. We found no
-clearly bad name whose benefit would justify a rename ahead of 1.0, so this
-release introduces no rename or compatibility alias.
+return behavior. No exported name is currently deprecated. Before 1.0 the
+0.9 additions `snapshot_json()`, `inspect_json()` and
+`db_table_source(own_connection =)` were renamed to `screen_snapshot_json()`,
+`widget_snapshot_json()` and `owned =` without aliases (see
+[migration notes](migration-to-1.0.md)). Event names were not renamed; see
+[Events](events.md).
 
