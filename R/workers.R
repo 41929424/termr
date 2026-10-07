@@ -16,6 +16,32 @@
 # The function runs in a fresh R session: it must be self-contained. Pass
 # data through `args`, and the packages it needs through `packages`.
 
+# Diagnostics describe only environment categories, never binding names or
+# values from a user closure. This is used by the targeted worker CI probe.
+worker_environment_chain <- function(fn) {
+  env <- environment(fn)
+  if (is.null(env)) return("primitive")
+  categories <- character()
+  for (depth in seq_len(20L)) {
+    category <- if (identical(env, globalenv())) "global" else if (identical(env, emptyenv())) {
+      "empty"
+    } else if (identical(env, baseenv())) {
+      "base"
+    } else if (isNamespace(env)) {
+      paste0("namespace:", getNamespaceName(env))
+    } else if (startsWith(environmentName(env), "package:")) {
+      "attached-package"
+    } else {
+      "local"
+    }
+    categories <- c(categories, category)
+    if (identical(env, emptyenv())) break
+    env <- parent.env(env)
+  }
+  if (!identical(env, emptyenv())) categories <- c(categories, "more")
+  paste(categories, collapse = ">")
+}
+
 #' @title Worker handle
 #' @description Returned by `app$run_worker()` and `app$run_process()`. See
 #'   [run_worker()].
@@ -114,7 +140,29 @@ Worker <- R6::R6Class(
       private$files <- c(job, out, prog, scratch, trace)
       private$progress_file <- prog
       private$trace_file <- trace
-      saveRDS(list(fn = fn, args = args, packages = packages), job)
+      payload <- list(fn = fn, args = args, packages = packages)
+      saveRDS(payload, job)
+      job_size <- file.info(job)$size
+      if (!file.exists(job) || is.na(job_size) || job_size <= 0) {
+        private$cleanup()
+        stop("The termr worker job file was not written or is empty.", call. = FALSE)
+      }
+      # Optional CI diagnostic: the parent reads the exact serialized job
+      # before spawning, to split a payload problem from child bootstrap.
+      diagnostic_read <- identical(Sys.getenv("TERMR_WORKER_DIAG_READRDS"), "1")
+      if (diagnostic_read) {
+        message("termr worker job shape: fn_env_chain=", worker_environment_chain(fn),
+                " args_bytes=", as.numeric(object.size(args)),
+                " packages_count=", length(packages), " rds_bytes=", job_size)
+        message("termr worker parent_before_read_rds: ", basename(job),
+                " size=", job_size, " object_bytes=", as.numeric(object.size(payload)))
+        tryCatch(readRDS(job), error = function(e) {
+          private$cleanup()
+          stop("The termr worker parent could not read its job file: ",
+               conditionMessage(e), call. = FALSE)
+        })
+        message("termr worker parent_after_read_rds: ", basename(job))
+      }
       script <- system.file("helpers", "termr-worker.R", package = "termr")
       if (!nzchar(script)) stop("The termr worker script is missing.", call. = FALSE)
       rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
@@ -126,7 +174,7 @@ Worker <- R6::R6Class(
       env <- c(R_TESTS = "", R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep),
                TMPDIR = scratch, TMP = scratch, TEMP = scratch)
       private$spawn_info <- paste0("spawn: wd=", getwd(), "; R_TESTS=[", env[["R_TESTS"]], "]; R_LIBS=[",
-                                   substr(env[["R_LIBS"]], 1L, 400L), "]")
+                                   substr(env[["R_LIBS"]], 1L, 400L), "]; job_bytes=", job_size)
       private$spawn(rscript, c("--vanilla", script, job, out, prog, trace), env = env)
     },
 

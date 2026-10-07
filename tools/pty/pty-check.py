@@ -16,6 +16,7 @@ Checks:
     alternate screen is left.
 """
 import fcntl
+import argparse
 import errno
 import os
 import platform
@@ -68,6 +69,10 @@ class Session:
         env["TERM"] = term
         print(f"PTY child: TERM={term!r} COLORTERM='' TERM_PROGRAM='' tty_mode={tty_mode}", flush=True)
         command = command or [RSCRIPT, script]
+        # fork() copies Python's buffered output into the child. Flush both
+        # streams so a previous case's failure cannot reappear in this PTY.
+        sys.stdout.flush()
+        sys.stderr.flush()
         self.pid, self.fd = pty.fork()
         if self.pid == 0:
             fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
@@ -271,13 +276,16 @@ def normal_session():
               not (attrs[3] & termios.ICANON) and not (attrs[3] & termios.ECHO))
         check("alternate screen entered", "\x1b[?1049h" in s.output)
         s.send("Ada")
+        check("typing reaches input", wait_until(lambda: "input value=Ada" in read_log(log), s, 30),
+              f"log={read_log(log)!r}; screen tail={strip(s.output)[-300:]!r}")
         s.send("\t")
+        check("Tab focuses button", wait_until(lambda: "button focused" in read_log(log), s, 30),
+              f"log={read_log(log)!r}; screen tail={strip(s.output)[-300:]!r}")
         s.send("\r")
-        # The action log proves the transport: "Ada" reached the input, Tab moved
-        # focus to the button and Enter pressed it. Screen text is not used for
-        # this (a diff renderer may split a changed line into several runs).
+        # Each event marker proves one transport stage; screen text is not
+        # used because a diff renderer may split changed lines into runs.
         pressed = wait_until(lambda: "pressed name=Ada" in read_log(log), s, 30)
-        check("typing, Tab and Enter", pressed,
+        check("Enter presses button", pressed,
               f"log={read_log(log)!r}; screen tail={strip(s.output)[-300:]!r}")
         print(f"INFO result label text contiguous on the stream: {'Hello, Ada' in strip(s.output)} "
               "(a diff renderer may split it into several cursor-addressed runs)", flush=True)
@@ -489,6 +497,49 @@ def no_tty_session():
     check("no-TTY error is not opaque ENXIO", "system error 6" not in output and "No such device" not in output)
 
 
+PENDIN = 0x20000000
+pendin_control = {False: False, True: False}
+
+
+def stty_settings(output):
+    # `stty -g` prints colon-separated hex fields on Linux and
+    # "gfmt1:name=hex:..." on macOS/BSD.
+    return re.findall(r"^(gfmt1:\S+|[0-9a-f]+(?::[0-9a-f]+){8,})\s*$", strip(output), re.M)
+
+
+def without_pendin(settings):
+    if not settings.startswith("gfmt1:"):
+        return settings
+    return re.sub(r"(?<=:lflag=)[0-9a-fA-F]+",
+                  lambda match: format(int(match.group(), 16) & ~PENDIN, "x"), settings, count=1)
+
+
+def added_pendin(before, after):
+    if platform.system() != "Darwin" or without_pendin(before) != without_pendin(after):
+        return False
+    flags = [re.search(r":lflag=([0-9a-fA-F]+)", x) for x in (before, after)]
+    return (all(flags) and not (int(flags[0].group(1), 16) & PENDIN)
+            and bool(int(flags[1].group(1), 16) & PENDIN))
+
+
+def control_termios_session(stdin_only=False):
+    """No termr/R process: test whether the PTY+stty lifecycle adds PENDIN."""
+    cmd = 'saved=$(stty -g); printf "%s\\n" "$saved"; stty raw -echo; stty "$saved"; printf "\\n"; stty -g'
+    s = Session(tty_mode="stdin" if stdin_only else "controlling", command=["sh", "-c", cmd])
+    status = s.wait_exit()
+    settings = stty_settings(s.output)
+    check(f"no-termr stty control exits (stdin_only={stdin_only})", status == 0, f"status={status}; output={strip(s.output)[-400:]!r}")
+    check(f"no-termr stty control snapshots (stdin_only={stdin_only})", len(settings) == 2, repr(settings))
+    if len(settings) != 2:
+        return
+    before, after = settings
+    pendin_control[stdin_only] = added_pendin(before, after)
+    check(f"no-termr stty control changes only PENDIN (stdin_only={stdin_only})",
+          before == after or pendin_control[stdin_only], repr(settings))
+    print(f"INFO no-termr stty control stdin_only={stdin_only}: "
+          f"{'PENDIN added' if pendin_control[stdin_only] else 'exact match' if before == after else 'other difference'}", flush=True)
+
+
 def termios_restored(stdin_only=False, term="xterm-256color", handler_error=False):
     script = os.path.join(HERE, "error-app.R") if handler_error else os.path.join(ROOT, "inst", "examples", "hello.R")
     cmd = (f"stty -g; {shlex.quote(RSCRIPT)} {shlex.quote(script)}; app_status=$?; "
@@ -498,11 +549,11 @@ def termios_restored(stdin_only=False, term="xterm-256color", handler_error=Fals
     s.wait_for("press x" if handler_error else "termr demo", 60)
     s.send("x" if handler_error else "\x03")
     status = s.wait_exit()
-    # `stty -g` prints colon-separated hex fields on Linux and
-    # "gfmt1:name=hex:..." on macOS/BSD; both are one token per line.
-    settings = re.findall(r"^(gfmt1:\S+|[0-9a-f]+(?::[0-9a-f]+){8,})\s*$", strip(s.output), re.M)
+    settings = stty_settings(s.output)
+    matched = len(settings) >= 2 and (settings[0] == settings[-1] or
+              (pendin_control[stdin_only] and added_pendin(settings[0], settings[-1])))
     check(f"stty restored (stdin_only={stdin_only}, TERM={term}, error={handler_error})",
-          len(settings) >= 2 and settings[0] == settings[-1], f"found {settings}")
+          matched, f"found {settings}; control_PENDIN={pendin_control[stdin_only]}")
     check("restoration session status", status != 0 if handler_error else status == 0, f"status {status}")
     teardown_modes(s)
 
@@ -535,9 +586,21 @@ def run_cases(cases):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--case", choices=("stdin_fallback_session", "no_tty_session"),
+                        help="run one failing session in an independent harness process")
+    parser.add_argument("--exclude-case", action="append", default=[],
+                        choices=("stdin_fallback_session", "no_tty_session"))
+    options = parser.parse_args()
     require_current_install()
-    run_cases([normal_session, keys_session, fragments_session, error_session, termios_restored,
-               stdin_fallback_session, no_tty_session, degraded_session,
-               lambda: termios_restored(stdin_only=True),
-               lambda: termios_restored(term="dumb"),
-               lambda: termios_restored(handler_error=True)])
+    cases = [normal_session, keys_session, fragments_session, error_session,
+             control_termios_session, lambda: control_termios_session(stdin_only=True),
+             termios_restored, stdin_fallback_session, no_tty_session, degraded_session,
+             lambda: termios_restored(stdin_only=True),
+             lambda: termios_restored(term="dumb"),
+             lambda: termios_restored(handler_error=True)]
+    if options.case:
+        cases = [globals()[options.case]]
+    else:
+        cases = [case for case in cases if case.__name__ not in options.exclude_case]
+    run_cases(cases)

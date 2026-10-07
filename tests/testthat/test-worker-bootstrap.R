@@ -26,11 +26,50 @@ test_that("probe A: a trivial worker completes and reaches every bootstrap phase
   expect_identical(r$worker$state, "completed", info = r$worker$error)
   expect_identical(r$worker$result, 42)
   expect_match(r$diagnostics, "phase=result_written")
-  for (phase in c("helper_entered", "helper_started", "payload_loaded", "payload_started",
-                  "payload_finished", "result_written")) {
+  for (phase in c("helper_entered", "helper_started", "args_received",
+                  "job_path_resolved", "job_file_exists", "before_read_rds",
+                  "after_read_rds", "payload_validated", "payload_loaded",
+                  "payload_started", "payload_finished", "result_written")) {
     expect_match(r$diagnostics, phase, fixed = TRUE)
   }
+  expect_match(r$diagnostics, "job_file_exists.*exists=TRUE size=[1-9][0-9]*")
   expect_worker_gone(r)
+})
+
+test_that("probe A2: base function, scalar closure and parent readRDS complete", {
+  withr::local_envvar(TERMR_WORKER_DIAG_READRDS = "1")
+  parent_log <- capture.output({
+    base_result <- probe_worker(base::identity, args = list(17L))
+    scalar <- 11L
+    closure_result <- probe_worker(function() scalar + 1L)
+  }, type = "message")
+  expect_identical(base_result$worker$result, 17L)
+  expect_identical(closure_result$worker$result, 12L)
+  expect_match(paste(parent_log, collapse = "\n"), "parent_before_read_rds")
+  expect_match(paste(parent_log, collapse = "\n"), "parent_after_read_rds")
+  expect_match(paste(parent_log, collapse = "\n"), "fn_env_chain=")
+  expect_worker_gone(base_result)
+  expect_worker_gone(closure_result)
+})
+
+test_that("the exact testthat worker job is readable by a clean Rscript", {
+  pilot <- test_app(app(label("x")), 20, 2)
+  withr::defer(pilot$stop())
+  worker <- pilot$app$run_worker(function() 42, timeout = 25)
+  job <- worker$.__enclos_env__$private$files[[1L]]
+  expect_true(file.exists(job))
+  expect_gt(file.info(job)$size, 0)
+  # The parent has not polled the worker yet, so its normal cleanup cannot
+  # remove this exact job before the independent Rscript reads it.
+  script <- "cat('standalone_before_read_rds\\n'); readRDS(commandArgs(trailingOnly = TRUE)[[1L]]); cat('standalone_after_read_rds\\n')"
+  standalone <- processx::run(probe_rscript(), c("--vanilla", "-e", script, job),
+                              env = c("current", R_TESTS = ""), timeout = 25000,
+                              error_on_status = FALSE)
+  expect_identical(standalone$status, 0L, info = standalone$stderr)
+  expect_match(standalone$stdout, "standalone_before_read_rds", fixed = TRUE)
+  expect_match(standalone$stdout, "standalone_after_read_rds", fixed = TRUE)
+  pilot$wait_for_workers(30)
+  expect_identical(worker$state, "completed", info = worker$error)
 })
 
 test_that("probe B: an erroring worker reports its error", {

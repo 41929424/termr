@@ -38,7 +38,11 @@ jobs:
         shell: bash
         env:
           NOT_CRAN: true
-        run: Rscript tools/ci/plain-probe.R 2>&1 | tee plain-probe.log
+          TERMR_WORKER_DIAG_READRDS: '1'
+        run: |
+          set -o pipefail
+          Rscript tools/ci/standalone-worker-probe.R 2>&1 | tee standalone-probe.log
+          Rscript tools/ci/plain-probe.R 2>&1 | tee plain-probe.log
 
       - name: Probe - inside R CMD check (R_TESTS exported by check)
         id: check
@@ -47,11 +51,12 @@ jobs:
         env:
           NOT_CRAN: true
           TERMR_TEST_FILTER: worker-bootstrap
+          TERMR_WORKER_DIAG_READRDS: '1'
           _R_CHECK_FORCE_SUGGESTS_: false
         run: |
           R CMD build --no-manual --no-build-vignettes .
           R CMD check --no-manual --no-examples --no-build-vignettes --ignore-vignettes \
-            --no-codetools termr_*.tar.gz
+            termr_*.tar.gz
 
       - name: Report probe output
         if: ${{ always() && (steps.plain.outcome == 'failure' || steps.check.outcome == 'failure') }}
@@ -59,6 +64,7 @@ jobs:
         run: |
           PY=$(command -v python3 || command -v python)
           $PY tools/ci/annotate.py "plain worker probe (${{ matrix.os }})" plain-probe.log || true
+          $PY tools/ci/annotate.py "standalone worker probe (${{ matrix.os }})" standalone-probe.log || true
           $PY tools/ci/annotate.py "worker probe tests (${{ matrix.os }})" termr.Rcheck/tests/testthat.Rout.fail || true
           $PY tools/ci/annotate.py "worker probe 00check.log (${{ matrix.os }})" termr.Rcheck/00check.log 3000 || true
 
@@ -84,4 +90,10 @@ jobs:
           TERM: xterm-256color
         run: |
           Rscript tools/pty/test-fixture.R
-          python3 tools/pty/pty-check-ci.py
+          # Run the two formerly contaminated cases in separate Python/PTY
+          # processes, then run every remaining case with fresh sessions.
+          status=0
+          python3 tools/pty/pty-check-ci.py --case stdin_fallback_session || status=1
+          python3 tools/pty/pty-check-ci.py --case no_tty_session || status=1
+          python3 tools/pty/pty-check-ci.py --exclude-case stdin_fallback_session --exclude-case no_tty_session || status=1
+          exit "$status"
