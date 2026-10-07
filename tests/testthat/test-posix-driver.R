@@ -47,3 +47,22 @@ test_that("stop() is safe when the driver never started", {
   expect_silent(driver$stop())
   expect_false(driver$started)
 })
+
+test_that("the processx input pipe preserves UTF-8 independently of locale", {
+  path <- tempfile("termr-input-bytes-")
+  bytes <- charToRaw(enc2utf8("a\u00e9\u20ac\U0001f600b"))
+  writeBin(bytes, path)
+  on.exit(unlink(path), add = TRUE)
+  # Copy binary data without R's platform-specific stdout text conversion.
+  command <- if (.Platform$OS.type == "windows") Sys.getenv("COMSPEC", "cmd.exe") else "cat"
+  args <- if (.Platform$OS.type == "windows") c("/c", "type", normalizePath(path)) else path
+  p <- processx::process$new(command, args, stdin = NULL, stdout = "|", stderr = "|", encoding = "UTF-8")
+  on.exit(p$kill_tree(), add = TRUE)
+  p$wait(5000)
+  expect_false(p$is_alive())
+  chunk <- p$read_all_output()
+  expect_identical(charToRaw(chunk), bytes)
+  x <- posix_with(list(chunk))
+  events <- x$driver$read_events(0)
+  expect_identical(vapply(events, function(e) e$key, ""), c("a", "\u00e9", "\u20ac", "\U0001f600", "b"))
+})

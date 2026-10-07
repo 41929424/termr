@@ -48,6 +48,14 @@ test_that("moving without a button held is not a drag", {
   expect_false(any(startsWith(d$log(), "drag")))
 })
 
+test_that("a drag released over its original target also emits click", {
+  d <- drag_app()
+  pilot <- test_app(d$app, 40, 6)
+  on.exit(pilot$stop(), add = TRUE)
+  pilot$drag(c(3, 2), c(5, 2), steps = 2)
+  expect_identical(tail(sub(" .*", "", d$log()), 3L), c("mouse.up", "drag.end", "click"))
+})
+
 test_that("capture_mouse routes events to a widget outside its region until release", {
   d <- drag_app()
   seen <- character()

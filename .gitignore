@@ -4,5 +4,7 @@
 *.tar.gz
 termr.Rcheck/
 /tools/validation-0.4/
+/tools/ci-work/
+/tools/pty/__pycache__/
 /tools/bench/baselines/*.Rprof*
 tests/testthat/_snaps/*.new.md

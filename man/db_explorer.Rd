@@ -26,6 +26,7 @@ dependencies.
 if (requireNamespace("DBI", quietly = TRUE) && requireNamespace("RSQLite", quietly = TRUE)) {
   con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
   DBI::dbWriteTable(con, "mtcars", mtcars)
-  app(db_explorer(db_connection(con, owned = TRUE)))
+  pilot <- test_app(app(db_explorer(db_connection(con, owned = TRUE))))
+  pilot$stop() # App teardown closes its owned connection.
 }
 }

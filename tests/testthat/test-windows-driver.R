@@ -8,6 +8,20 @@ test_that("uint32 helper fields retain their exact unsigned values", {
   expect_identical(vapply(values, signed_high_word, 0), c(0, 0, 32767, -32768, -1))
 })
 
+test_that("Windows console writes keep large UTF-8 frames in bounded pieces", {
+  # The native Rterm/UCRT crash occurred in fwrite() with a multi-KiB frame.
+  frame <- paste0("\033[?2026h", strrep("\u2502\U0001f642", 1500), "\033[?2026l")
+  pieces <- character()
+  write_windows_stdout(frame, writer = function(part) {
+    pieces <<- c(pieces, part)
+    invisible(NULL)
+  })
+  expect_identical(paste0(pieces, collapse = ""), frame)
+  expect_gt(length(pieces), 1L)
+  expect_true(all(nchar(pieces, type = "bytes") <= 4096L))
+  expect_true(all(vapply(pieces, function(part) !is.na(iconv(part, "UTF-8", "UTF-8", sub = NA)), logical(1))))
+})
+
 test_that("invalid uint32 fields are rejected without coercion warnings", {
   invalid <- list("", "NA", "NaN", "Inf", "-1", "-0", "4294967296",
                   "2147483648.5", "1.00000000000000001", "1e2", " 1", "1 ",

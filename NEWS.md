@@ -18,6 +18,15 @@
 
 ## Fixes from the 1.0 readiness audit
 
+* Terminal input validates UTF-8 bytes before locale conversion and retains
+  incomplete characters across reads, including on R 4.1.
+* Workers inherit the parent's library search paths while keeping `R_TESTS`
+  disabled. Process exit drains output without an unbounded EOF wait,
+  cleans up descendants immediately, and reports process diagnostics on
+  unexpected exit or a Pilot timeout.
+* The `db_explorer()` documentation example now stops its app and closes
+  the owned SQLite connection.
+
 * `db_table_source()` works with current RSQLite (3.53 / DBI 1.3), which
   rejects an empty parameter list; previously every unfiltered SQLite source,
   and therefore the `db_explorer()` preview, failed at creation. It now also

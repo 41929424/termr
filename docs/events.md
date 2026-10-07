@@ -141,6 +141,10 @@ origin of the drag. `widget$capture_mouse()` sends *all* mouse events to a widge
 until `widget$release_mouse()` or the next release. Handle them with
 `on_drag_move(event)` methods or `widget$on("drag.move", ...)`.
 
+For compatibility with the existing event model, releasing the same button
+over the original target emits `click`, including after a drag. Releasing
+outside that target does not. `drag.end` precedes that click.
+
 ## Paste
 
 A bracketed paste arrives as one `PasteEvent` for the focused widget

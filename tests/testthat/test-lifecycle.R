@@ -46,7 +46,7 @@ test_that("removing widgets and screens cancels their subprocesses", {
 
   owner <- label("owner")
   application <- app(owner)
-  detached <- tryCatch(owner$run_process(rscript, c("-e", "Sys.sleep(60)")), error = identity)
+  detached <- tryCatch(owner$run_process(rscript, c("-e", "Sys.sleep(60)"), env = child_tmp()), error = identity)
   if (inherits(detached, "error") && grepl("Access is denied", conditionMessage(detached), fixed = TRUE) &&
       !identical(tolower(Sys.getenv("CI")), "true")) {
     skip("The sandbox blocks processx child-process pipes.")
@@ -64,7 +64,7 @@ test_that("removing widgets and screens cancels their subprocesses", {
   screen <- modal(screen_owner)
   application$push_screen(screen)
   pilot$step()
-  screen_worker <- screen_owner$run_process(rscript, c("-e", "Sys.sleep(60)"))
+  screen_worker <- screen_owner$run_process(rscript, c("-e", "Sys.sleep(60)"), env = child_tmp())
   on.exit(screen_worker$cancel(), add = TRUE)
   expect_true(screen_worker$is_running())
   application$pop_screen()

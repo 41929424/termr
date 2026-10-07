@@ -64,6 +64,7 @@ test_that("database explorer runs SQL, keeps history, reports errors and preserv
   skip_if_not_installed("DBI")
   skip_if_not_installed("RSQLite")
   con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+  on.exit(if (DBI::dbIsValid(con)) DBI::dbDisconnect(con), add = TRUE)
   DBI::dbWriteTable(con, "items", data.frame(id = 1:3, name = letters[1:3]))
   external <- db_connection(con, name = "external")
   explorer <- db_explorer(external)
@@ -98,6 +99,7 @@ test_that("database explorer runs SQL, keeps history, reports errors and preserv
   expect_match(explorer$status$text, "Disconnected")
 
   owned_con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+  on.exit(if (DBI::dbIsValid(owned_con)) DBI::dbDisconnect(owned_con), add = TRUE)
   owned <- db_connection(owned_con, owned = TRUE)
   owned_explorer <- db_explorer(owned)
   owned_pilot <- test_app(app(owned_explorer), width = 50, height = 15)
