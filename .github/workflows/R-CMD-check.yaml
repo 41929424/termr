@@ -42,7 +42,6 @@ jobs:
           args: 'c("--no-manual", "--as-cran")'
 
       - name: Run extended regression suite
-        if: runner.os == 'Windows'
         env:
           NOT_CRAN: true
         run: Rscript -e "testthat::test_local(reporter = 'summary')"
@@ -88,7 +87,10 @@ jobs:
       - name: Run PTY checks
         env:
           PYTHONUTF8: 1
-        run: python3 tools/pty/pty-check-ci.py
+          TERM: xterm-256color
+        run: |
+          Rscript tools/pty/test-fixture.R
+          python3 tools/pty/pty-check-ci.py
 
   windows-input:
     # WindowsDriver's wire parser and the shared input/event behavior are
@@ -124,3 +126,6 @@ jobs:
           Rscript -e "testthat::test_local(
           filter = 'windows-driver|mouse|paste|graphemes|unicode|platform-bounds|lifecycle',
           reporter = 'summary')"
+
+      - name: Check the PTY event fixture headlessly
+        run: Rscript tools/pty/test-fixture.R

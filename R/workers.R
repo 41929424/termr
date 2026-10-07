@@ -61,6 +61,7 @@ Worker <- R6::R6Class(
     cancel = function(grace = 0.3) {
       if (self$state != "running") return(invisible(FALSE))
       private$terminate(grace)
+      private$last_diagnostics <- private$diagnostics()
       private$cleanup()
       self$state <- "cancelled"
       private$emit("worker.cancelled", list())
@@ -92,6 +93,9 @@ Worker <- R6::R6Class(
     timeout = NULL,
     max_lines = 1000L,
     max_events_per_poll = 200L,
+    executable = NULL,
+    last_diagnostics = NULL,
+    exited_at = NULL,
 
     start_process = function(app, fn, args, packages, timeout) {
       private$app <- app
@@ -113,7 +117,8 @@ Worker <- R6::R6Class(
       # with --vanilla, so a worker would otherwise rerun the test suite
       # before loading its job (and recursively start more workers).
       private$spawn(rscript, c("--vanilla", script, job, out, prog),
-                    env = c(R_TESTS = "", TMPDIR = scratch, TMP = scratch, TEMP = scratch))
+                    env = c(R_TESTS = "", R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep),
+                            TMPDIR = scratch, TMP = scratch, TEMP = scratch))
     },
 
     start_command = function(app, command, args, wd, env, timeout) {
@@ -125,6 +130,7 @@ Worker <- R6::R6Class(
 
     spawn = function(command, args, wd = NULL, env = NULL) {
       private$started <- now_seconds()
+      private$executable <- command
       private$process <- tryCatch(
         # Worker and run_process children never consume the app's terminal
         # input. Keep stdin detached even if the processx default changes.
@@ -152,32 +158,48 @@ Worker <- R6::R6Class(
       if (self$state != "running" || is.null(private$process)) return(invisible())
       p <- private$process
       alive <- p$is_alive()
-      private$drain(p, final = !alive)
+      if (!alive && is.null(private$exited_at)) {
+        private$exited_at <- now_seconds()
+        # Stop surviving producers without closing the pipes we still need
+        # to drain. The remaining output backlog is now finite.
+        try(p$kill_tree(close_connections = FALSE), silent = TRUE)
+      }
+      more_output <- private$drain(p, final = !alive)
       if (self$state != "running") return(invisible())
       if (alive) {
         if (!is.null(private$timeout) && now_seconds() - private$started > private$timeout) {
           private$terminate(0.3)
           self$timed_out <- TRUE
-          private$finish(list(ok = FALSE, message = sprintf("Timed out after %s seconds.", format(private$timeout))))
+          private$finish(list(ok = FALSE, message = paste0(
+            sprintf("Timed out after %s seconds. ", format(private$timeout)), private$diagnostics())))
         }
         return(invisible())
       }
+      # Process exit and pipe EOF can be observed on different ticks (notably
+      # on Windows). Give already-written output a bounded, nonblocking drain
+      # window; inherited pipes must never hold a dead worker indefinitely.
+      if (isTRUE(more_output)) {
+        private$exited_at <- now_seconds()
+        return(invisible())
+      }
+      if ((p$is_incomplete_output() || p$is_incomplete_error()) &&
+          now_seconds() - private$exited_at < 0.1) return(invisible())
       if (self$kind == "process") {
         status <- p$get_exit_status()
         private$finish(if (identical(status, 0L)) list(ok = TRUE, value = status) else
-          list(ok = FALSE, message = sprintf("The process exited with status %s.", format(status)), status = status))
+          list(ok = FALSE, message = paste0(sprintf("The process exited with status %s. ", format(status)),
+                                          private$diagnostics()), status = status))
         return(invisible())
       }
       out <- private$files[[2]]
       res <- if (file.exists(out)) tryCatch(readRDS(out), error = function(e) NULL)
-      if (is.null(res)) {
-        err <- paste(utils::tail(self$stderr, 3L), collapse = " ")
+      if (!is.list(res) || !is.logical(res$ok) || length(res$ok) != 1L || is.na(res$ok) ||
+          (!res$ok && (length(res$message) != 1L || !is.character(res$message)))) {
         status <- p$get_exit_status()
         status_text <- if (is.null(status)) "unknown" else as.character(status)
-        detail <- if (nzchar(trimws(err))) paste0(" Stderr: ", trimws(err)) else ""
         res <- list(ok = FALSE,
                     message = paste0("The worker process exited with status ", status_text,
-                                     " without a result.", detail),
+                                     " without a valid result. ", private$diagnostics()),
                     status = status)
       }
       private$finish(res)
@@ -185,18 +207,37 @@ Worker <- R6::R6Class(
 
     # Deliver new output lines and progress records.
     drain = function(p, final = FALSE) {
-      budget <- private$max_events_per_poll
+      more <- FALSE
       for (stream in c("output", "error")) {
-        lines <- if (final) {
-          if (stream == "output") p$read_all_output_lines() else p$read_all_error_lines()
-        } else if (p$poll_io(0L)[[stream]] == "ready") {
-          if (stream == "output") p$read_output_lines() else p$read_error_lines()
-        } else character()
-        if (!length(lines)) next
-        private$deliver_lines(lines, if (stream == "output") "stdout" else "stderr")
+        # read_all_* waits indefinitely for EOF if a descendant inherited
+        # the pipe. Read available chunks only, including after parent exit.
+        budget <- if (final) private$max_lines else private$max_events_per_poll
+        while (budget > 0L) {
+          status <- p$poll_io(0L)[[stream]]
+          if (!final && status != "ready") break
+          lines <- if (stream == "output") p$read_output_lines(n = budget) else p$read_error_lines(n = budget)
+          if (!length(lines)) break
+          budget <- budget - length(lines)
+          private$deliver_lines(lines, if (stream == "output") "stdout" else "stderr")
+          if (self$state != "running") return(invisible())
+        }
+        if (budget <= 0L) more <- TRUE
       }
       private$read_progress()
-      invisible()
+      invisible(more)
+    },
+
+    diagnostics = function() {
+      if (!is.null(private$last_diagnostics)) return(private$last_diagnostics)
+      p <- private$process
+      alive <- if (is.null(p)) FALSE else p$is_alive()
+      status <- if (is.null(p)) NULL else p$get_exit_status()
+      exists <- length(private$files) >= 2L && file.exists(private$files[[2]])
+      paste0("PID=", self$pid(), "; executable=", private$executable,
+             "; state=", if (alive) "alive" else "exited", "; worker=", self$state,
+             "; exit_status=", if (is.null(status)) "unknown" else status,
+             "; result_exists=", exists, "; stderr_tail=",
+             paste(utils::tail(self$stderr, 3L), collapse = " | "))
     },
 
     deliver_lines = function(lines, stream) {
@@ -243,17 +284,21 @@ Worker <- R6::R6Class(
     # Interrupt (Unix), wait up to `grace` seconds, then kill the tree.
     terminate = function(grace) {
       p <- private$process
-      if (is.null(p) || !p$is_alive()) return(invisible())
-      if (grace > 0 && .Platform$OS.type != "windows") {
+      if (is.null(p)) return(invisible())
+      if (p$is_alive() && grace > 0 && .Platform$OS.type != "windows") {
         try(p$interrupt(), silent = TRUE)
         try(p$wait(as.integer(grace * 1000)), silent = TRUE)
       }
-      if (p$is_alive()) try(p$kill_tree(), silent = TRUE)
+      try(p$kill_tree(), silent = TRUE)
       invisible()
     },
 
     finish = function(res) {
       app <- private$app
+      private$last_diagnostics <- private$diagnostics()
+      # The root can have exited while descendants still own its pipes.
+      # Cleanup must not wait for GC of a retained Worker handle.
+      if (!is.null(private$process)) try(private$process$kill_tree(), silent = TRUE)
       private$cleanup()
       if (isTRUE(res$ok)) {
         self$state <- "completed"

@@ -1,0 +1,42 @@
+library(termr)
+main <- function() {
+  script_arg <- grep("^--file=", commandArgs(), value = TRUE)
+  here <- dirname(normalizePath(sub("^--file=", "", script_arg[[1L]])))
+  path <- tempfile()
+  on.exit(unlink(path))
+  old_log <- Sys.getenv("TERMR_PTY_LOG", unset = NA_character_)
+  on.exit(if (is.na(old_log)) Sys.unsetenv("TERMR_PTY_LOG") else Sys.setenv(TERMR_PTY_LOG = old_log), add = TRUE)
+  Sys.setenv(TERMR_PTY_LOG = path)
+  env <- new.env(parent = globalenv())
+  env$run <- function(a) {
+    pilot <- test_app(a, 60, 20)
+    on.exit(pilot$stop())
+    pilot$step()
+    stopifnot("ready" %in% readLines(path))
+    pilot$wait_for_workers()
+    pilot$type("a\u00e9\U0001f600")
+    keys <- c("enter", "tab", "shift+tab", "escape", "up", "down", "right", "left", "home", "end",
+              "delete", "backspace", "pageup", "pagedown", "f1", "f5", "f12", "alt+x", "ctrl+left", "shift+up", "ctrl+a")
+    for (key in keys) pilot$press(key)
+    pilot$paste("first line\nsecond \u00e9")
+    pilot$mouse("down", 5, 1, button = "left")
+    pilot$mouse("up", 5, 1, button = "left")
+    pilot$mouse("scroll", 5, 1, button = "none", direction = "up")
+    pilot$mouse("down", 5, 2, button = "left")
+    pilot$mouse("move", 6, 2, button = "left")
+    pilot$mouse("move", 8, 3, button = "left")
+    pilot$mouse("up", 8, 3, button = "left")
+    pilot$resize(50, 15)
+    pilot$advance(0.5)
+    lines <- readLines(path, encoding = "UTF-8")
+    for (key in keys) stopifnot(paste("key", key) %in% sub(" \\[.*", "", lines))
+    stopifnot(all(c("key a [a]", "key \u00e9 [\u00e9]", "key \U0001f600 [\U0001f600]",
+      "paste first line<LF>second \u00e9", "mouse mouse.scroll none 5,1 up",
+      "mouse drag.start left 6,2", "mouse drag.end left 8,3", "resize 50x15", "tick 1") %in% lines))
+    pilot$press("ctrl+q")
+  }
+  sys.source(file.path(here, "keys-app.R"), env)
+  stopifnot("exited" %in% readLines(path))
+  cat("PTY event fixture headless smoke: PASS\n")
+}
+main()
