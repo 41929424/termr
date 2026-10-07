@@ -26,7 +26,8 @@ signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
 def error_terminal_restoration():
     script = os.path.join(HERE, "error-app.R")
-    cmd = f"stty -g; {shlex.quote(checks.RSCRIPT)} {shlex.quote(script)}; echo; stty -g"
+    cmd = (f"stty -g; {shlex.quote(checks.RSCRIPT)} {shlex.quote(script)}; app_status=$?; "
+           f"echo; stty -g; exit $app_status")
     pid, fd = pty.fork()
     if pid == 0:
         os.execvp("sh", ["sh", "-c", cmd])

@@ -2,7 +2,7 @@
 #'
 #' A table source lets [data_table()] request only the rows it needs. All
 #' callbacks are synchronous. `get_rows()` must return a data frame with the
-#' requested columns in the requested order. Row counts are known in 0.6.
+#' requested columns in the requested order. Row counts are known.
 #'
 #' Optional `sort` and `filter` callbacks change the source's current view.
 #' They receive the sort keys or the named filter list used by
@@ -15,8 +15,10 @@
 #' `include_current`; it returns `NULL` or `list(position, column)`. `row_key`
 #' maps view positions to stable row identities. `set_value(row, column,
 #' value)` receives a current view position. `refresh` and `close` are
-#' optional lifecycle callbacks. Closing a source is explicit and never
-#' closes resources the source does not own.
+#' optional lifecycle callbacks. `on_error(error, start, count, columns)` may
+#' return a correctly shaped placeholder data frame when a page read fails;
+#' the table then displays the error instead of aborting a paint. Closing a
+#' source is explicit and never closes resources the source does not own.
 #'
 #' @param row_count Function returning the current number of rows, or a
 #'   non-negative scalar count.
@@ -28,11 +30,14 @@
 #' @param set_value Optional function `(row, column, value)` for editing.
 #' @param refresh,close Optional functions called by `$refresh()` and
 #'   `$close()`.
+#' @param on_error Optional function returning a page-shaped placeholder when
+#'   `get_rows()` fails. It receives the original condition and requested page.
 #' @return An experimental `termr_table_source` object.
 #' @export
 table_source <- function(row_count, column_names, get_rows, sort = NULL,
                          filter = NULL, search = NULL, row_key = NULL,
-                         set_value = NULL, refresh = NULL, close = NULL) {
+                         set_value = NULL, refresh = NULL, close = NULL,
+                         on_error = NULL) {
   as_count <- function(x, what) {
     if (!is.numeric(x) || length(x) != 1L || is.na(x) || !is.finite(x) ||
         x < 0 || x != floor(x) || x > .Machine$integer.max) {
@@ -54,7 +59,7 @@ table_source <- function(row_count, column_names, get_rows, sort = NULL,
   }
   callbacks <- list(sort = sort, filter = filter, search = search,
                     row_key = row_key, set_value = set_value,
-                    refresh = refresh, close = close)
+                    refresh = refresh, close = close, on_error = on_error)
   bad <- names(callbacks)[!vapply(callbacks, function(x) is.null(x) || is.function(x), TRUE)]
   if (length(bad)) stop(sprintf("`%s` must be a function or NULL.", bad[[1L]]), call. = FALSE)
   source <- c(list(row_count = row_count, column_names = column_names,

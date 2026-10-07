@@ -26,6 +26,10 @@ a$set_interval(0.5, function(app) {
   ticks <<- ticks + 1L
   if (ticks <= 3L) log_line("tick ", ticks)
 })
+a$run_worker(
+  function() isatty(stdin()),
+  on_complete = function(result, app) log_line("worker stdin is a TTY: ", result)
+)
 log_line("ready")
 run(a)
 log_line("exited")

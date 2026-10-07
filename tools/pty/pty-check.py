@@ -185,6 +185,8 @@ def keys_session():
     s = Session(os.path.join(HERE, "keys-app.R"))
     check("keys app starts", wait_log(log, "ready", 60))
     s.wait_for("keys app")
+    check("worker stdin is detached from the controlling PTY",
+          wait_log(log, "worker stdin is a TTY: FALSE", 30), f"{read_log(log)}")
     s.read(0.5)
     state = {"mark": len(read_log(log))}
 
@@ -237,6 +239,14 @@ def keys_session():
           and any("mouse.scroll" in e and "up" in e for e in ev), f"{ev}")
     reset()
 
+    # A held button followed by motion reports a drag, then releases cleanly.
+    s.send("\x1b[<0;5;2M\x1b[<32;6;2M\x1b[<32;8;3M\x1b[<0;8;3m", 0.3)
+    ev = events_after()
+    check("mouse drag press/move/release",
+          "mouse mouse.down left 5,2" in ev and "mouse mouse.move left 6,2" in ev
+          and "mouse mouse.move left 8,3" in ev and "mouse mouse.up left 8,3" in ev, f"{ev}")
+    reset()
+
     # Bracketed paste, delivered in two fragments.
     os.write(s.fd, b"\x1b[200~first line\nsec")
     time.sleep(0.1)
@@ -246,10 +256,18 @@ def keys_session():
     check("bracketed paste mode enabled", "\x1b[?2004h" in s.output)
     reset()
 
-    # Resize and timers.
-    s.resize(50, 15)
+    # Tiny, very wide and rapid resize changes must leave a usable final frame.
+    for cols, rows in [(1, 1), (2048, 40), (2, 1), (120, 30), (1, 1), (50, 15)]:
+        s.resize(cols, rows)
+        time.sleep(0.08)
     ev = events_after(1.5)
-    check("resize event", "resize 50x15" in ev, f"{ev}")
+    check("resize storm reaches the final size", "resize 50x15" in ev, f"{ev}")
+    reset()
+
+    # Resize and timers.
+    s.resize(60, 16)
+    ev = events_after(1.5)
+    check("resize event", "resize 60x16" in ev, f"{ev}")
     check("timers fire", "tick 1" in read_log(log), f"{read_log(log)}")
 
     # Interrupt: SIGINT must end the app cleanly and restore the terminal.

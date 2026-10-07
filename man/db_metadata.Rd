@@ -15,7 +15,7 @@ A list with \code{schemas()}, \code{tables(schema)}, \code{views(schema)},
 }
 \description{
 The returned functions use DBI's portable table and field listing. SQLite
-additionally exposes views from its catalog. Drivers with richer schema
-metadata can wrap these functions without changing the explorer or
-DataTable.
+additionally exposes views from its catalog. Driver packages can use this
+small callback protocol when building their own metadata views; the
+explorer does not yet have an adapter registry.
 }

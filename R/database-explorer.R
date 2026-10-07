@@ -3,9 +3,9 @@
 #' Create a DBI metadata interface
 #'
 #' The returned functions use DBI's portable table and field listing. SQLite
-#' additionally exposes views from its catalog. Drivers with richer schema
-#' metadata can wrap these functions without changing the explorer or
-#' DataTable.
+#' additionally exposes views from its catalog. Driver packages can use this
+#' small callback protocol when building their own metadata views; the
+#' explorer does not yet have an adapter registry.
 #'
 #' @param connection A [db_connection()] wrapper or open DBI connection.
 #' @return A list with `schemas()`, `tables(schema)`, `views(schema)`,
@@ -92,7 +92,12 @@ DatabaseExplorer <- R6::R6Class(
 
       self$preview <- data_table(data.frame(), id = "db_preview")
       self$query_results <- data_table(data.frame(), id = "db_query_results")
-      self$sql <- sql_editor("SELECT * FROM ", id = "db_sql", connection = self$connection)
+      self$sql <- sql_editor("SELECT * FROM ", id = "db_sql", connection = self$connection,
+                             result_mode = if (inherits(self$connection$con, "SQLiteConnection")) {
+                               "lazy"
+                             } else {
+                               "data"
+                             })
       self$details <- label("Select a table or view to see its columns.", id = "db_details")
       self$history <- label("No queries run in this session.", id = "db_history")
       self$status <- label(private$status_text(), id = "db_status",
@@ -123,6 +128,9 @@ DatabaseExplorer <- R6::R6Class(
               selector = "#db_sql")
       self$on("sql.query_failed", function(event, app) private$query_failed(event$data),
               selector = "#db_sql")
+      self$on("datatable.source_error", function(event, app) {
+        private$set_status(paste0("Query result fetch failed: ", event$data$message), "error")
+      }, selector = "#db_query_results")
       self$on("input.changed", function(event, app) private$filter_objects(self$object_search$value),
               selector = "#db_object_search")
     },
@@ -141,6 +149,8 @@ DatabaseExplorer <- R6::R6Class(
       if (!self$connection$is_valid()) {
         self$preview$close()
         self$preview$set_data(data.frame())
+        self$query_results$close()
+        self$query_results$set_data(data.frame())
         private$set_status("Disconnected")
         self$sql$disabled <- TRUE
         return(invisible(FALSE))
@@ -237,6 +247,7 @@ DatabaseExplorer <- R6::R6Class(
     },
     on_app_shutdown = function() {
       self$preview$close()
+      self$query_results$close()
       if (isTRUE(self$connection$owned)) self$connection$disconnect()
       invisible(NULL)
     }
@@ -352,11 +363,20 @@ DatabaseExplorer <- R6::R6Class(
     query_completed = function(data) {
       private$.running <- FALSE
       result <- data$result
+      source <- data$source
+      if (is_table_source(source)) {
+        self$query_results$close()
+        self$query_results$set_data(source)
+      } else if (is.data.frame(result)) {
+        self$query_results$close()
+        self$query_results$set_data(result)
+      } else {
+        self$query_results$close()
+        self$query_results$set_data(data.frame())
+      }
       rows <- if (is.data.frame(result)) nrow(result) else as.numeric(data$rows %||% 0)
-      if (is.data.frame(result)) self$query_results$set_data(result)
-      else self$query_results$set_data(data.frame())
       record <- list(sql = data$sql, timestamp = Sys.time(), elapsed_ms = data$elapsed_ms %||% data$elapsed * 1000,
-                     ok = TRUE, rows = rows)
+                     ok = TRUE, rows = rows, result_type = data$result_type %||% "data")
       private$.history[[length(private$.history) + 1L]] <- record
       private$set_history_text()
       private$set_status(paste0("Query complete | ", rows, " rows | ",

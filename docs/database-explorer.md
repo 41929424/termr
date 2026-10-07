@@ -28,7 +28,9 @@ metadata functions used by the explorer: schemas, tables, views, fields, and
 identifier quoting. The baseline uses `DBI::dbListTables()` and
 `DBI::dbListFields()`. SQLite also reports views from `sqlite_master`. Other
 drivers currently report an empty view list and do not expose schemas through
-the generic baseline.
+the generic baseline. There is no metadata adapter registry yet; other driver
+packages can use the `db_metadata()` callback shape as a baseline for their
+own composed views.
 
 ## Browsing objects and previews
 
@@ -39,7 +41,13 @@ the DataTable fetches rows in bounded pages as the viewport moves. Opening a
 table requests a row count for that selected object, but the explorer does
 not count every table during startup or metadata listing. A schema-aware or
 non-SQLite driver can supply richer metadata and a lazy source adapter without
-changing DataTable.
+changing DataTable. The explorer currently provides a lazy preview adapter
+only for SQLite; another driver's metadata can still be read through DBI and
+its SQL can run in the editor.
+
+Type in the object filter above the tree to show case-insensitive substring
+matches. Filtering loads and caches the table/view names on demand; clearing
+the filter returns the tree to lazy group loading.
 
 The Details tab shows the selected object's name, type, row count when the
 SQLite source can provide it, and column names. The generic metadata path does
@@ -48,12 +56,17 @@ not make extra catalog queries for types, primary keys, or nullability.
 ## SQL queries and history
 
 In the SQL tab, Ctrl+Enter runs the selected SQL, or the whole buffer when
-there is no selection. Query results are materialized by DBI and displayed in
-the adjacent DataTable. Successful and failed statements are retained in
+there is no selection. Result-set queries use the lazy DBI query source and
+the adjacent DataTable fetches bounded pages. SQLite uses a cached count and
+bound `LIMIT`/`OFFSET`. Other drivers keep the materialized query behavior;
+driver-specific lazy adapters can be configured on a standalone
+`sql_editor()`. Successful and failed statements are retained in
 `explorer$query_history()` for the current R session. The History tab shows
 the most recent entries; it does not persist SQL to the database. The F5
 binding refreshes object metadata, and Ctrl+Shift+O creates a quoted `SELECT
-*` statement for the selected object.
+*` statement for the selected object. Ctrl+Shift+C copies the selected
+object's raw name to the app clipboard, and Ctrl+Shift+I inserts its
+driver-quoted name at the SQL cursor.
 
 ## Errors and limitations
 
@@ -61,7 +74,7 @@ Metadata and query errors are reported in the status line; query failures
 also produce a notification and a `db_explorer.query_failed` event. If the
 connection becomes invalid, the explorer reports a disconnected state and
 disables SQL execution. Generic DBI execution is synchronous and cannot be
-cancelled through a portable DBI API. Query results are materialized; table
-previews are lazy for SQLite. There is no SQL autocomplete, parser,
-vendor-specific schema introspection, connection pool, or generic preview
-adapter for other drivers yet.
+cancelled through a portable DBI API. Lazy query pagination requires a known
+row count and does not add SQL sorting, filtering, or search. There is no SQL
+autocomplete, parser, vendor-specific schema introspection, connection pool,
+or generic table-preview adapter for other drivers yet.

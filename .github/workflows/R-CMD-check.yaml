@@ -1,6 +1,6 @@
 on:
   push:
-    branches: [main, master, develop-0.2, develop-0.3, develop-0.4, develop-0.5, develop-0.6, develop-0.7]
+    branches: [main, master, develop-0.2, develop-0.3, develop-0.4, develop-0.5, develop-0.6, develop-0.7, develop-0.8, develop-0.9]
   pull_request:
 
 name: R-CMD-check
@@ -84,4 +84,41 @@ jobs:
         with:
           extra-packages: local::.
       - name: Run PTY checks
+        env:
+          PYTHONUTF8: 1
         run: python3 tools/pty/pty-check-ci.py
+
+  windows-input:
+    # WindowsDriver's wire parser and the shared input/event behavior are
+    # deterministic without an interactive desktop console.
+    runs-on: windows-latest
+    name: Windows input regressions
+    env:
+      NOT_CRAN: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: local::.
+          needs: check
+      - name: Parse the PowerShell console helper
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/inst/helpers/termr-input.ps1", [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            exit 1
+          }
+      - name: Run Windows input and boundary tests
+        run: >-
+          Rscript -e "testthat::test_local(
+          filter = 'windows-driver|mouse|paste|graphemes|unicode|platform-bounds|lifecycle',
+          reporter = 'summary')"

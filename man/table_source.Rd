@@ -14,7 +14,8 @@ table_source(
   row_key = NULL,
   set_value = NULL,
   refresh = NULL,
-  close = NULL
+  close = NULL,
+  on_error = NULL
 )
 }
 \arguments{
@@ -34,6 +35,9 @@ character vector.}
 
 \item{refresh, close}{Optional functions called by \verb{$refresh()} and
 \verb{$close()}.}
+
+\item{on_error}{Optional function returning a page-shaped placeholder when
+\code{get_rows()} fails. It receives the original condition and requested page.}
 }
 \value{
 An experimental \code{termr_table_source} object.
@@ -41,7 +45,7 @@ An experimental \code{termr_table_source} object.
 \description{
 A table source lets \code{\link[=data_table]{data_table()}} request only the rows it needs. All
 callbacks are synchronous. \code{get_rows()} must return a data frame with the
-requested columns in the requested order. Row counts are known in 0.6.
+requested columns in the requested order. Row counts are known.
 }
 \details{
 Optional \code{sort} and \code{filter} callbacks change the source's current view.
@@ -54,6 +58,8 @@ entire data set.
 \code{search} receives a parsed query, column names, \code{start}, \code{direction}, and
 \code{include_current}; it returns \code{NULL} or \code{list(position, column)}. \code{row_key}
 maps view positions to stable row identities. \code{set_value(row, column, value)} receives a current view position. \code{refresh} and \code{close} are
-optional lifecycle callbacks. Closing a source is explicit and never
-closes resources the source does not own.
+optional lifecycle callbacks. \code{on_error(error, start, count, columns)} may
+return a correctly shaped placeholder data frame when a page read fails;
+the table then displays the error instead of aborting a paint. Closing a
+source is explicit and never closes resources the source does not own.
 }

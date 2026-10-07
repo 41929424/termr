@@ -126,7 +126,9 @@ Worker <- R6::R6Class(
     spawn = function(command, args, wd = NULL, env = NULL) {
       private$started <- now_seconds()
       private$process <- tryCatch(
-        processx::process$new(command, args, stdout = "|", stderr = "|", wd = wd,
+        # Worker and run_process children never consume the app's terminal
+        # input. Keep stdin detached even if the processx default changes.
+        processx::process$new(command, args, stdin = NULL, stdout = "|", stderr = "|", wd = wd,
                               env = if (is.null(env)) NULL else c("current", env),
                               cleanup = TRUE, cleanup_tree = TRUE),
         error = function(e) {

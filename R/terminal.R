@@ -39,17 +39,19 @@ TerminalDriver <- R6::R6Class(
     # Sequences that put the terminal into / out of application mode.
     setup_sequence = function() {
       paste0(
-        ansi_alt_screen(TRUE), ansi_cursor_visible(FALSE), ansi_autowrap(FALSE),
+        if (isTRUE(self$capabilities$alternate_screen)) ansi_alt_screen(TRUE) else "",
+        ansi_cursor_visible(FALSE), ansi_autowrap(FALSE),
         ansi_reset(), ansi_clear_screen(), ansi_cursor_home(),
-        if (isTRUE(self$mouse)) ansi_mouse(TRUE) else "",
+        if (isTRUE(self$mouse) && isTRUE(self$capabilities$sgr_mouse)) ansi_mouse(TRUE) else "",
         if (isTRUE(self$capabilities$bracketed_paste)) ansi_bracketed_paste(TRUE) else ""
       )
     },
     teardown_sequence = function() {
       paste0(
         if (isTRUE(self$capabilities$bracketed_paste)) ansi_bracketed_paste(FALSE) else "",
-        if (isTRUE(self$mouse)) ansi_mouse(FALSE) else "",
-        ansi_reset(), ansi_autowrap(TRUE), ansi_cursor_visible(TRUE), ansi_alt_screen(FALSE)
+        if (isTRUE(self$mouse) && isTRUE(self$capabilities$sgr_mouse)) ansi_mouse(FALSE) else "",
+        ansi_reset(), ansi_autowrap(TRUE), ansi_cursor_visible(TRUE),
+        if (isTRUE(self$capabilities$alternate_screen)) ansi_alt_screen(FALSE) else ""
       )
     }
   )

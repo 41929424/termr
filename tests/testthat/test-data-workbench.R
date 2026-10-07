@@ -1,0 +1,11 @@
+test_that("the data workbench composes table, record, profile and status widgets", {
+  pilot <- test_app(load_example("data-workbench"), 110, 30)
+  expect_true(inherits(pilot$query_one("#workbench-data"), "DataTable"))
+  expect_true(inherits(pilot$query_one("#workbench-record"), "PropertyGrid"))
+  expect_true(inherits(pilot$query_one("#workbench-profile"), "DataProfile"))
+  expect_true(inherits(pilot$query_one("#workbench-status"), "StatusBar"))
+  pilot$query_one("#workbench-data")$move_cursor(row = 5L)
+  pilot$step()
+  expect_equal(pilot$query_one("#workbench-status")$right, "row 5")
+  pilot$stop()
+})

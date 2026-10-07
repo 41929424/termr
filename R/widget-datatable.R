@@ -194,6 +194,7 @@ DataTable <- R6::R6Class(
     #' @param data A data frame, matrix, or [table_source()].
     set_data = function(data) {
       opts <- private$.options
+      private$.source_error <- NULL
       if (is_table_source(data)) {
         private$.source <- data
         private$.source_closed <- FALSE
@@ -946,6 +947,15 @@ DataTable <- R6::R6Class(
         buffer$put_text(g$inner$x, g$inner$y, str_align(line, g$body_w), fg = header_style$foreground,
                         bg = header_style$background, attrs = header_style$attrs, clip = clip)
       }
+      if (!is.null(private$.source_error) && g$body_h > 0L && g$body_w > 0L) {
+        error_style <- resolve_style(style(foreground = "$error", bold = TRUE), parent = st)
+        buffer$put_text(g$inner$x, g$body_y,
+                        str_truncate(paste0("Source error: ", private$.source_error), g$body_w),
+                        fg = error_style$foreground, bg = error_style$background,
+                        attrs = error_style$attrs, clip = clip)
+        private$paint_scrollbars(buffer, g, st, area)
+        return(invisible())
+      }
       rows_pos <- g$rows
       if (length(rows_pos) > 0L) {
         data_rows <- private$positions_to_rows(rows_pos)
@@ -1024,6 +1034,7 @@ DataTable <- R6::R6Class(
     .data = NULL,
     .source = NULL,
     .source_closed = FALSE,
+    .source_error = NULL,
     .source_schema = NULL,
     .source_cache = NULL,
     .source_lru = character(),
@@ -1095,8 +1106,17 @@ DataTable <- R6::R6Class(
       private$.source_stats$cache_misses <- private$.source_stats$cache_misses + 1L
       private$.source_stats$fetch_calls <- private$.source_stats$fetch_calls + 1L
       private$.source_stats$rows_requested <- private$.source_stats$rows_requested + expected
+      failed <- FALSE
       result <- tryCatch(private$.source$get_rows(start, count, columns), error = function(e) {
-        stop(sprintf("`table_source$get_rows(start=%d, count=%d)` failed: %s", start, count, conditionMessage(e)), call. = FALSE)
+        message <- sprintf("`table_source$get_rows(start=%d, count=%d)` failed: %s",
+                           start, count, conditionMessage(e))
+        if (is.null(private$.source$on_error)) stop(message, call. = FALSE)
+        failed <<- TRUE
+        private$.source_error <<- conditionMessage(e)
+        self$post_message("datatable.source_error", list(message = message, start = start, count = count))
+        tryCatch(private$.source$on_error(e, start, count, columns), error = function(handler_error) {
+          stop(paste0(message, "; source error handler failed: ", conditionMessage(handler_error)), call. = FALSE)
+        })
       })
       if (!is.data.frame(result)) stop("`table_source$get_rows()` must return a data.frame.", call. = FALSE)
       if (nrow(result) != expected) {
@@ -1105,6 +1125,7 @@ DataTable <- R6::R6Class(
       if (!identical(names(result), columns)) {
         stop(sprintf("`table_source$get_rows(start=%d, count=%d)` returned inconsistent column names.", start, count), call. = FALSE)
       }
+      if (!failed) private$.source_error <- NULL
       assign(key, result, private$.source_cache)
       private$.source_lru <- c(private$.source_lru, key)
       if (length(private$.source_lru) > 32L) {

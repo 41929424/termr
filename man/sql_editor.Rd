@@ -12,7 +12,9 @@ sql_editor(
   execution = c("query", "execute"),
   line_numbers = TRUE,
   tab_size = 2L,
-  ...
+  ...,
+  result_mode = c("data", "lazy"),
+  query_adapter = NULL
 )
 }
 \arguments{
@@ -32,6 +34,13 @@ sql_editor(
 \item{tab_size}{Spaces inserted by Tab.}
 
 \item{...}{Additional arguments passed to \link{TextArea}.}
+
+\item{result_mode}{Query result mode: "data" materializes the result
+(the default); "lazy" returns a \code{\link[=db_query_source]{db_query_source()}} for a paged table.
+Lazy mode is available only with execution = "query".}
+
+\item{query_adapter}{Optional backend pager callbacks passed to
+\code{\link[=db_query_source]{db_query_source()}}.}
 }
 \value{
 A \code{TextArea} subclass with an \code{execute()} method.

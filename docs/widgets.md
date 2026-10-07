@@ -37,6 +37,10 @@ function(value)` returns `NULL` / `TRUE` (valid), `FALSE` or a message.
 `progress_bar()`, `metric()`, `sparkline()` and `key_value()` accept a function
 that re-evaluates when the [signals](reactivity.md) it reads change.
 
+The data and developer workflow widgets are described in
+[data-workflows.md](data-workflows.md), including reactive selection patterns,
+profile semantics and lazy JSON expansion.
+
 Input keys: Left/Right/Home/End, Ctrl+Left/Right (words), Shift+... to
 select, Ctrl+A select all, Backspace/Delete, Ctrl+Backspace/Ctrl+W and
 Ctrl+Delete (words), Ctrl+U/K, Ctrl+C/X/V with the app clipboard.
@@ -58,6 +62,11 @@ Ctrl+Delete (words), Ctrl+U/K, Ctrl+C/X/V with the app clipboard.
 |--------|-------|
 | `data_table(df, ...)` | see [data.md](data.md) |
 | `tree_view(tree_node(...))` | lazy `loader =`; `tree.node_selected`, `_expanded`, `_collapsed`, `_activated` |
+| `status_bar(left, center, right)` | one-line three-region status display |
+| `property_grid(data)` | scrollable, read-only key/value inspector; values wrap |
+| `record_view(data)` | named list/vector or one-row data frame via `property_grid()` |
+| `data_profile(x)` | R vector summary with a compact numeric distribution |
+| `json_view(x)` | collapsible R list/vector tree with paged lazy children |
 | `metric(label, value, delta)` | `$update(value, delta)` |
 | `sparkline(x)` | `$push(values)` for streams |
 | `progress_bar(value, total)` | `NA` for indeterminate; `$advance()` |

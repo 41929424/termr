@@ -6,8 +6,8 @@ large to keep in an R data frame, it also accepts an experimental
 to a viewport without building the full result in memory. It is synchronous,
 and the row count must be known.
 
-The source API is experimental in termr 0.6 and may change before 1.0. It has
-no additional runtime dependencies.
+The source API remains experimental during 0.x and may change before 1.0. It
+has no additional runtime dependencies; see the [stability policy](stability.md).
 
 ## Custom source
 
@@ -113,6 +113,23 @@ It does not accept arbitrary SQL. Other DBI drivers and query sources can
 implement `table_source()` with driver-specific, parameterized queries. Fetch
 callbacks run synchronously on the UI thread, so slow remote queries can pause
 rendering.
+
+For a read-only query result, `db_query_source()` adds a generic DBI adapter
+protocol and a built-in RSQLite pager:
+
+```r
+src <- db_query_source(con, "SELECT id, total FROM sales WHERE total > ?",
+                       params = list(100))
+tbl <- data_table(src)
+```
+
+The SQLite pager obtains column names without fetching rows, caches one count,
+and uses bound `LIMIT`/`OFFSET` parameters for each 100-row DataTable chunk.
+Other drivers can provide `column_names`, `row_count`, and `get_rows` callbacks
+through `adapter`; pagination and identifier quoting remain the adapter's
+responsibility. Closing a query source never disconnects its supplied
+connection. See [SQL workflows](sql.md#lazy-dbi-query-sources) for the limits
+on query shape and supported operations.
 
 ## Limits
 
