@@ -69,7 +69,7 @@ db_table_source <- function(connection, table, own_connection = FALSE) {
   }
   count_rows <- function(filters) {
     where <- make_where(filters)
-    result <- DBI::dbGetQuery(connection, paste("SELECT COUNT(*) AS n FROM", table_sql, where$sql), params = where$params)
+    result <- db_get_query(connection, paste("SELECT COUNT(*) AS n FROM", table_sql, where$sql), where$params)
     as.numeric(result$n[[1L]])
   }
   state$count <- count_rows(state$filters)

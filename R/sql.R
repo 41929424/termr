@@ -142,6 +142,12 @@ db_connection <- function(con, name = NULL, owned = FALSE) {
   TermrDBConnection$new(con = con, name = name, owned = owned)
 }
 
+# Recent RSQLite versions reject an empty `params` list for a query without
+# placeholders, so parameters are passed only when there are some.
+db_get_query <- function(con, sql, params = NULL) {
+  if (!length(params)) DBI::dbGetQuery(con, sql) else DBI::dbGetQuery(con, sql, params = params)
+}
+
 TermrDBConnection <- R6::R6Class(
   "TermrDBConnection",
   public = list(
@@ -158,11 +164,11 @@ TermrDBConnection <- R6::R6Class(
     },
     query = function(sql, params = NULL) {
       private$check_ready(sql)
-      if (is.null(params)) DBI::dbGetQuery(self$con, sql) else DBI::dbGetQuery(self$con, sql, params = params)
+      db_get_query(self$con, sql, params)
     },
     execute = function(sql, params = NULL) {
       private$check_ready(sql)
-      if (is.null(params)) DBI::dbExecute(self$con, sql) else DBI::dbExecute(self$con, sql, params = params)
+      if (!length(params)) DBI::dbExecute(self$con, sql) else DBI::dbExecute(self$con, sql, params = params)
     },
     disconnect = function(force = FALSE) {
       check_flag(force, "force")

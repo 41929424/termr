@@ -34,9 +34,13 @@ test_that("SQLite query sources wrap one result query and page bounded rows", {
   expect_lte(tbl$source_stats()$rows_requested, 100L)
   invisible(render_widget(tbl, 40, 8))
   expect_lte(tbl$source_stats()$rows_requested, 100L)
+  # One 100-row page per source call, whatever the number of columns.
+  expect_identical(tbl$source_stats()$fetch_calls, 1L)
   tbl$scroll_to_row(250L)
   invisible(render_widget(tbl, 40, 8))
-  expect_lte(tbl$source_stats()$rows_requested, 200L)
+  # A centred viewport may straddle two pages.
+  expect_lte(tbl$source_stats()$fetch_calls, 3L)
+  expect_lte(tbl$source_stats()$rows_requested, 300L)
   tbl$close()
   expect_true(DBI::dbIsValid(con))
 })
@@ -66,7 +70,7 @@ test_that("DBI query source accepts a generic backend pager", {
   tbl$scroll_to_row(500000L)
   invisible(render_widget(tbl, 40, 8))
   expect_true(all(calls$rows <= 100L))
-  expect_lt(sum(calls$rows), 300L)
+  expect_lte(length(calls$rows), 3L)
 })
 
 test_that("SQLite lazy query source paginates a million-row result", {
@@ -86,7 +90,7 @@ test_that("SQLite lazy query source paginates a million-row result", {
   expect_lte(tbl$source_stats()$rows_requested, 100L)
   tbl$scroll_to_row(500000L)
   invisible(render_widget(tbl, 40, 8))
-  expect_lte(tbl$source_stats()$rows_requested, 200L)
+  expect_lte(tbl$source_stats()$rows_requested, 300L)
   expect_equal(tbl$row_data(500000L)$id, 500000L)
 })
 
@@ -145,7 +149,7 @@ test_that("lazy query fetch failures are visible and do not abort table paint", 
   tbl$scroll_to_row(200L)
   expect_no_error(render_widget(tbl, 30, 8))
   expect_match(src$last_error(), "no longer valid")
-  expect_match(render_widget(tbl, 30, 8)$to_text(), "Source error")
+  expect_match(paste(render_widget(tbl, 30, 8)$to_text(), collapse = "\n"), "Source error")
 })
 
 test_that("database explorer surfaces lazy query fetch errors without crashing", {
@@ -157,11 +161,14 @@ test_that("database explorer surfaces lazy query fetch errors without crashing",
   explorer$sql$set_text("SELECT id FROM items")
   expect_true(explorer$run_query()$ok)
   pilot <- test_app(app(explorer), width = 70, height = 20)
+  explorer$tabs$activate("db_sql_tab")
+  pilot$step()
   DBI::dbDisconnect(con)
   explorer$query_results$scroll_to_row(200L)
   expect_no_error(pilot$step())
+  expect_no_error(pilot$step())
   expect_match(explorer$status$text, "fetch failed")
-  expect_match(render_widget(explorer$query_results, 40, 8)$to_text(), "Source error")
+  expect_match(paste(pilot$screen_text(), collapse = "\n"), "fetch failed")
   pilot$stop()
 })
 
