@@ -2,6 +2,7 @@
 .Rhistory
 .RData
 *.tar.gz
-retui.Rcheck/
+termr.Rcheck/
 /tools/validation-0.4/
 /tools/bench/baselines/*.Rprof*
+tests/testthat/_snaps/*.new.md
