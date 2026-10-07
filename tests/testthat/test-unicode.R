@@ -29,3 +29,12 @@ test_that("str_truncate and str_align respect display width", {
   expect_identical(str_align("ab", 5, "right"), "   ab")
   expect_identical(str_align("abcdef", 3), "abc")
 })
+
+test_that("C1 control characters never reach the framebuffer", {
+  csi <- intToUtf8(0x9b)
+  expect_identical(sanitize_text(paste0("a", csi, "2Jb")), "a2Jb")
+  expect_identical(cell(paste0("\033", csi))$char, " ")
+  buf <- render_widget(label(paste0("x", csi, "y")), 5, 1)
+  expect_false(any(grepl(csi, buf$chars, fixed = TRUE)))
+  expect_identical(sanitize_text("caf\u00e9 \u00a0ok"), "caf\u00e9 \u00a0ok")
+})

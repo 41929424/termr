@@ -14,10 +14,12 @@
 # the rules evolve.
 
 # Remove control characters so user text can never inject escape sequences.
+# C1 controls (U+0080-U+009F) are removed too: some terminals treat U+009B
+# as CSI and U+009D as OSC.
 sanitize_text <- function(x) {
   x <- enc2utf8(as.character(x))
   x <- gsub("\t", " ", x, fixed = TRUE)
-  gsub("[\001-\037\177]", "", x, perl = TRUE)
+  gsub("[\\x{01}-\\x{1f}\\x{7f}-\\x{9f}]", "", x, perl = TRUE)
 }
 
 is_ascii <- function(x) !grepl("[^\001-\177]", x, useBytes = TRUE)

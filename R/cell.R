@@ -43,6 +43,9 @@ cell <- function(char = " ", fg = NULL, bg = NULL, bold = FALSE,
                  italic = FALSE, underline = FALSE, reverse = FALSE,
                  dim = FALSE, strike = FALSE) {
   check_scalar_character(char)
+  # Cells reach the terminal verbatim, so control characters are removed.
+  char <- sanitize_text(char)
+  if (!nzchar(char)) char <- " "
   structure(
     list(
       char = char,
