@@ -1,6 +1,6 @@
 on:
   push:
-    branches: [main, master, develop-0.2, develop-0.3, develop-0.4, develop-0.5, develop-0.6, develop-0.7, develop-0.8, develop-0.9]
+    branches: [main, master, 'develop-*']
   pull_request:
 
 name: R-CMD-check
@@ -17,6 +17,8 @@ jobs:
         config:
           - {os: ubuntu-latest, r: 'release'}
           - {os: ubuntu-latest, r: 'oldrel-1'}
+          # The minimum declared in DESCRIPTION (Depends: R >= 4.1.0).
+          - {os: ubuntu-latest, r: '4.1'}
           - {os: ubuntu-latest, r: 'devel'}
           - {os: macos-latest, r: 'release'}
           - {os: windows-latest, r: 'release'}
