@@ -36,6 +36,21 @@ def strip(text):
     return ANSI.sub("", text)
 
 
+def require_current_install():
+    """The apps run `library(termr)`: refuse to test an installed termr whose
+    version differs from this checkout (e.g. an old release)."""
+    import subprocess
+    with open(os.path.join(ROOT, "DESCRIPTION"), encoding="utf-8") as f:
+        wanted = next(line.split(":", 1)[1].strip() for line in f if line.startswith("Version:"))
+    out = subprocess.run([RSCRIPT, "-e", "cat(as.character(packageVersion('termr')))"],
+                         capture_output=True, text=True)
+    found = out.stdout.strip()
+    if out.returncode != 0 or found != wanted:
+        sys.exit(f"Installed termr is {found or 'missing'}, this checkout is {wanted}. "
+                 "Install the checkout first (R CMD INSTALL .) or set R_LIBS.")
+    print(f"testing installed termr {found}")
+
+
 class Session:
     def __init__(self, script, cols=60, rows=20, tty_mode="controlling"):
         self.pid, self.fd = pty.fork()
@@ -351,6 +366,7 @@ def termios_restored(stdin_only=False):
 
 
 if __name__ == "__main__":
+    require_current_install()
     normal_session()
     keys_session()
     error_session()

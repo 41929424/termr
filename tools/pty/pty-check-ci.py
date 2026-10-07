@@ -60,6 +60,7 @@ def error_terminal_restoration():
     )
 
 
+checks.require_current_install()
 checks.normal_session()
 checks.keys_session()
 checks.error_session()

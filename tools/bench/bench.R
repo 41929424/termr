@@ -17,14 +17,20 @@
 # Compare revisions with tools/bench/compare.R. Base R only.
 
 pkg <- if (file.exists("DESCRIPTION")) read.dcf("DESCRIPTION", "Package")[[1]] else "termr"
-suppressMessages({
-  if (requireNamespace("pkgload", quietly = TRUE) && file.exists("DESCRIPTION")) {
-    pkgload::load_all(".", quiet = TRUE)
-  } else {
-    library(pkg, character.only = TRUE)
+# A checkout is always loaded with pkgload (compare.R runs this script inside
+# each revision's checkout); an installed termr is used only outside one.
+if (file.exists("DESCRIPTION")) {
+  if (!requireNamespace("pkgload", quietly = TRUE)) {
+    stop("Benchmarking a checkout needs pkgload (installed with testthat).", call. = FALSE)
   }
-})
+  suppressMessages(pkgload::load_all(".", quiet = TRUE))
+  source_label <- paste("checkout", normalizePath("."))
+} else {
+  suppressMessages(library(pkg, character.only = TRUE))
+  source_label <- paste("installed", find.package(pkg))
+}
 ns <- asNamespace(pkg)
+message(sprintf("Benchmarking %s %s (%s)", pkg, utils::packageVersion(pkg, lib.loc = NULL), source_label))
 
 args <- commandArgs(trailingOnly = TRUE)
 opt <- function(flag, default) {
