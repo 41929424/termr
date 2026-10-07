@@ -1,6 +1,6 @@
 on:
   push:
-    branches: [main, master, develop-0.2, develop-0.3, develop-0.4]
+    branches: [main, master, develop-0.2, develop-0.3, develop-0.4, develop-0.5]
   pull_request:
 
 name: R-CMD-check
@@ -45,6 +45,28 @@ jobs:
           NOT_CRAN: true
         run: Rscript -e "testthat::test_local(reporter = 'summary')"
 
+  SQL-integration:
+    runs-on: ubuntu-latest
+    name: SQL integration (DBI + SQLite)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::rcmdcheck
+            any::DBI
+            any::RSQLite
+          needs: check
+      - name: Verify optional database dependencies and run SQL tests
+        run: >-
+          Rscript -e "stopifnot(requireNamespace('DBI', quietly = TRUE),
+          requireNamespace('RSQLite', quietly = TRUE));
+          testthat::test_local(filter = 'sql', reporter = 'summary')"
+
   pty:
     # Drives the Unix terminal driver in a real pseudo terminal.
     runs-on: ${{ matrix.os }}
@@ -62,4 +84,4 @@ jobs:
         with:
           extra-packages: local::.
       - name: Run PTY checks
-        run: python3 tools/pty/pty-check.py
+        run: python3 tools/pty/pty-check-ci.py
