@@ -46,13 +46,14 @@ terminal cell metrics.
 `screen_snapshot()` returns a base R list with `schema_version`, dimensions,
 full lines, and row-major style runs. It needs no optional package. Schema
 version 1 is intended for reproducible snapshots; consumers should check the
-version before relying on its structure. `snapshot_json()` serializes the
+version before relying on its structure. `screen_snapshot_json()` serializes the
 same structure through optional `jsonlite`.
 
 ## Widget inspection and redaction
 
-`widget_snapshot()` and `inspect_json()` serialize only structural fields:
-type, id, classes, region, visible/enabled/focused flags, and children.
+`widget_snapshot()` and `widget_snapshot_json()` serialize only structural fields:
+`schema_version` (root only), type, id, classes, region,
+visible/enabled/focused flags, and children.
 Arbitrary widget state and values are omitted, including password input values,
 database credentials, and worker data. The actual screen snapshot can of
 course show text that was painted on screen, including a widget's visible

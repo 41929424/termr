@@ -20,7 +20,7 @@ for (size in list(c(80L, 24L), c(120L, 40L), c(200L, 60L), c(300L, 100L))) {
     html = termr::render_html(ui, width, height),
     svg = termr::render_svg(ui, width, height)
   )
-  if (requireNamespace("jsonlite", quietly = TRUE)) outputs$json <- termr::snapshot_json(ui, width, height)
+  if (requireNamespace("jsonlite", quietly = TRUE)) outputs$json <- termr::screen_snapshot_json(ui, width, height)
   cat(sprintf("\n%d x %d (%d style runs)\n", width, height,
     length(termr::screen_snapshot(ui, width, height)$runs)))
   for (name in names(outputs)) {
@@ -29,7 +29,7 @@ for (size in list(c(80L, 24L), c(120L, 40L), c(200L, 60L), c(300L, 100L))) {
       markdown = quote(termr::render_markdown(ui, width, height)),
       html = quote(termr::render_html(ui, width, height)),
       svg = quote(termr::render_svg(ui, width, height)),
-      json = quote(termr::snapshot_json(ui, width, height)))
+      json = quote(termr::screen_snapshot_json(ui, width, height)))
     timing <- measure(call, n = 5L)
     cat(sprintf("%-9s median %.4fs, min %.4fs, %d bytes\n", name,
       timing[[1]], timing[[2]], nchar(outputs[[name]], type = "bytes")))
