@@ -1,5 +1,33 @@
 # termr 0.9.0 (development)
 
+## Fixes from the 1.0 readiness audit
+
+* `db_table_source()` works with current RSQLite (3.53 / DBI 1.3), which
+  rejects an empty parameter list; previously every unfiltered SQLite source,
+  and therefore the `db_explorer()` preview, failed at creation. It now also
+  accepts a `db_connection()` wrapper.
+* `data_table()` with a table source fetches one page per source call for all
+  columns instead of one call per painted column.
+* Moving a mounted widget with `mount()` keeps its `bind_reactive()` bindings,
+  widget timers and owned workers; only `remove()` ends them.
+* `widget$on()` also accepts the argument order of `on()` / `app$on()`:
+  `widget$on(type, selector, handler)`.
+* Password inputs no longer reveal their value through `print()`, the event
+  log, the debug overlay or `inspect_widget()`, and never copy it to a
+  clipboard.
+* Text and cells drop C1 control characters (U+0080-U+009F) as well as C0
+  controls, so untrusted text cannot emit 8-bit CSI/OSC sequences.
+* The key parser replaces bytes that are not UTF-8 instead of failing, and
+  drops over-long escape sequences instead of buffering them without bound.
+* `batch()` and `watch()` restore the reactive graph after an interrupt; an
+  interrupted handler previously left every watcher deferred.
+* `render_html(trim = TRUE)` trims only the end of each row (inner spaces were
+  removed, shifting columns); SVG output preserves runs of spaces.
+* Large trees no longer trigger the "too many events in one tick" warning at
+  start-up; the guard counts events added during a tick.
+* `db_explorer()`: the object filter is case-insensitive as documented, and
+  expanding a group after the connection closed no longer errors.
+
 ## Core workflow widgets
 
 * Added `status_bar()`, `property_grid()`, `record_view()`, `data_profile()`,

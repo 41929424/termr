@@ -4,11 +4,11 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 
 ## Scope and counting
 
-- Explicit `export()` symbols: **146**.
+- Explicit `export()` symbols: **155**.
 - Registered S3 methods: **29** (listed separately; they are registrations, not `export(name)` directives).
 - Exported symbols without a matching Rd alias: **0**.
 - Exports without an Rd usage section: **0**.
-- Exports without an Rd examples section: **68**.
+- Exports without an Rd examples section: **72**.
 - Exports with no direct occurrence in README/docs/examples/tests: **24**.
 
 ?Used? below means a textual symbol occurrence in the named area; it does not prove runtime reachability. S3 methods are not counted as direct exports. `Rd usage` means a top-level Rd `\usage{}` section or an R6 method usage subsection. R6 class entries can be types returned by constructors even when their class names do not occur directly in examples.
@@ -22,6 +22,7 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 | `BlurEvent` | R6 class | [events.R](../R/events.R#L187) | [yes](../man/Event.Rd) | yes | no | ? |
 | `Button` | R6 class | [widget-button.R](../R/widget-button.R#L13) | [yes](../man/Button-class.Rd) | yes | no | docs, tests |
 | `Checkbox` | R6 class | [widget-controls.R](../R/widget-controls.R#L7) | [yes](../man/Checkbox-class.Rd) | yes | no | ? |
+| `DataProfile` | R6 class | [widget-workflows.R](../R/widget-workflows.R#L420) | [yes](../man/DataProfile-class.Rd) | yes | no | tests |
 | `DataTable` | R6 class | [widget-datatable.R](../R/widget-datatable.R#L88) | [yes](../man/DataTable-class.Rd) | yes | no | docs |
 | `Event` | R6 class | [events.R](../R/events.R#L20) | [yes](../man/Event.Rd) | yes | no | docs |
 | `FocusEvent` | R6 class | [events.R](../R/events.R#L175) | [yes](../man/Event.Rd) | yes | no | ? |
@@ -46,6 +47,7 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 | `RadioButton` | R6 class | [widget-controls.R](../R/widget-controls.R#L88) | [yes](../man/RadioButton.Rd) | yes | no | ? |
 | `RadioSet` | R6 class | [widget-controls.R](../R/widget-controls.R#L148) | [yes](../man/RadioSet-class.Rd) | yes | no | ? |
 | `ResizeEvent` | R6 class | [events.R](../R/events.R#L128) | [yes](../man/Event.Rd) | yes | no | docs, tests |
+| `PropertyGrid` | R6 class | [widget-workflows.R](../R/widget-workflows.R#L163) | [yes](../man/PropertyGrid-class.Rd) | yes | no | tests |
 | `Rule` | R6 class | [widget-display.R](../R/widget-display.R#L214) | [yes](../man/Rule-class.Rd) | yes | no | ? |
 | `Screen` | R6 class | [widget-containers.R](../R/widget-containers.R#L6) | [yes](../man/Screen.Rd) | yes | no | tests |
 | `ScreenBuffer` | R6 class | [screen-buffer.R](../R/screen-buffer.R#L16) | [yes](../man/ScreenBuffer.Rd) | yes | no | docs, examples, tests |
@@ -55,6 +57,7 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 | `Spinner` | R6 class | [widget-display.R](../R/widget-display.R#L133) | [yes](../man/Spinner-class.Rd) | yes | no | ? |
 | `SplitHandle` | R6 class | [widget-split.R](../R/widget-split.R#L6) | [yes](../man/SplitHandle-class.Rd) | yes | no | ? |
 | `SplitPane` | R6 class | [widget-split.R](../R/widget-split.R#L82) | [yes](../man/SplitPane-class.Rd) | yes | no | ? |
+| `StatusBar` | R6 class | [widget-workflows.R](../R/widget-workflows.R#L7) | [yes](../man/StatusBar-class.Rd) | yes | no | tests |
 | `TabPane` | R6 class | [widget-tabs.R](../R/widget-tabs.R#L4) | [yes](../man/TabPane.Rd) | yes | no | ? |
 | `Tabs` | R6 class | [widget-tabs.R](../R/widget-tabs.R#L34) | [yes](../man/Tabs-class.Rd) | yes | no | docs |
 | `TextArea` | R6 class | [widget-textarea.R](../R/widget-textarea.R#L5) | [yes](../man/TextArea-class.Rd) | yes | no | docs, tests |
@@ -81,10 +84,12 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 | `confirm_dialog` | function | [screens.R](../R/screens.R#L188) | [yes](../man/modal.Rd) | yes | yes | docs, examples, tests |
 | `current_app` | function | [app.R](../R/app.R#L1085) | [yes](../man/current_app.Rd) | yes | no | tests |
 | `data_browser` | function | [browse-data.R](../R/browse-data.R#L34) | [yes](../man/browse_data.Rd) | yes | yes | README, docs, examples, tests |
+| `data_profile` | function | [widget-workflows.R](../R/widget-workflows.R#L506) | [yes](../man/data_profile.Rd) | yes | yes | docs, examples, tests |
 | `data_table` | function | [widget-datatable.R](../R/widget-datatable.R#L2114) | [yes](../man/data_table.Rd) | yes | yes | README, docs, examples, tests |
 | `db_connection` | function | [sql.R](../R/sql.R#L135) | [yes](../man/db_connection.Rd) | yes | no | README, docs, examples, tests |
 | `db_explorer` | function | [database-explorer.R](../R/database-explorer.R#L61) | [yes](../man/db_explorer.Rd) | yes | yes | README, docs, examples, tests |
 | `db_metadata` | helper | [database-explorer.R](../R/database-explorer.R#L14) | [yes](../man/db_metadata.Rd) | yes | no | docs, tests |
+| `db_query_source` | function | [datatable-source-query.R](../R/datatable-source-query.R#L30) | [yes](../man/db_query_source.Rd) | yes | no | docs, tests |
 | `db_table_source` | function | [datatable-source-sqlite.R](../R/datatable-source-sqlite.R#L16) | [yes](../man/db_table_source.Rd) | yes | no | docs, tests |
 | `diff_screen` | helper | [diff.R](../R/diff.R#L24) | [yes](../man/diff_screen.Rd) | yes | yes | examples, tests |
 | `dispose` | function | [signals.R](../R/signals.R#L275) | [yes](../man/signals.Rd) | yes | yes | docs, tests |
@@ -95,6 +100,7 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 | `inspect_json` | helper | [export.R](../R/export.R#L253) | [yes](../man/inspect_json.Rd) | yes | no | docs, tests |
 | `inspect_signal` | helper | [signals.R](../R/signals.R#L334) | [yes](../man/inspect_signal.Rd) | yes | no | docs, tests |
 | `inspect_widget` | helper | [devtools.R](../R/devtools.R#L18) | [yes](../man/inspect_widget.Rd) | yes | yes | docs, tests |
+| `json_view` | function | [widget-workflows.R](../R/widget-workflows.R#L555) | [yes](../man/json_view.Rd) | yes | yes | docs, tests |
 | `key_event` | helper | [events.R](../R/events.R#L248) | [yes](../man/key_event.Rd) | yes | yes | tests |
 | `key_value` | function | [widget-display.R](../R/widget-display.R#L553) | [yes](../man/key_value.Rd) | yes | yes | README, docs, examples, tests |
 | `knit_termr` | function | [export.R](../R/export.R#L268) | [yes](../man/knit_termr.Rd) | yes | no | docs, tests |
@@ -111,10 +117,12 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 | `peek` | function | [signals.R](../R/signals.R#L304) | [yes](../man/signals.Rd) | yes | yes | docs, tests |
 | `process_view` | function | [widget-process.R](../R/widget-process.R#L152) | [yes](../man/process_view.Rd) | yes | yes | README, docs, tests |
 | `progress_bar` | function | [widget-display.R](../R/widget-display.R#L115) | [yes](../man/progress_bar.Rd) | yes | yes | README, docs, examples, tests |
+| `property_grid` | function | [widget-workflows.R](../R/widget-workflows.R#L255) | [yes](../man/property_grid.Rd) | yes | yes | docs, tests |
 | `r_highlighter` | function | [widget-textarea.R](../R/widget-textarea.R#L1582) | [yes](../man/r_highlighter.Rd) | yes | no | docs, tests |
 | `radio_button` | function | [widget-controls.R](../R/widget-controls.R#L239) | [yes](../man/radio_set.Rd) | yes | yes | docs, examples, tests |
 | `radio_set` | function | [widget-controls.R](../R/widget-controls.R#L230) | [yes](../man/radio_set.Rd) | yes | yes | README, docs, examples, tests |
 | `reactive` | function | [reactive.R](../R/reactive.R#L17) | [yes](../man/reactive.Rd) | yes | yes | README, docs, examples, tests |
+| `record_view` | function | [widget-workflows.R](../R/widget-workflows.R#L302) | [yes](../man/record_view.Rd) | yes | yes | docs, examples, tests |
 | `region` | helper | [geometry.R](../R/geometry.R#L17) | [yes](../man/region.Rd) | yes | yes | README, docs, examples, tests |
 | `register_layout` | function | [layout.R](../R/layout.R#L271) | [yes](../man/register_layout.Rd) | yes | no | docs, tests |
 | `render_html` | helper | [export.R](../R/export.R#L151) | [yes](../man/render_html.Rd) | yes | yes | README, docs, tests |
@@ -141,6 +149,7 @@ Generated from the checked-in `NAMESPACE`, top-level definitions in `R/`, and cu
 | `split_pane` | function | [widget-split.R](../R/widget-split.R#L248) | [yes](../man/split_pane.Rd) | yes | yes | README, docs, examples, tests |
 | `sql_editor` | function | [sql.R](../R/sql.R#L207) | [yes](../man/sql_editor.Rd) | yes | no | README, docs, examples, tests |
 | `sql_highlighter` | function | [sql.R](../R/sql.R#L9) | [yes](../man/sql_highlighter.Rd) | yes | no | docs, tests |
+| `status_bar` | function | [widget-workflows.R](../R/widget-workflows.R#L111) | [yes](../man/status_bar.Rd) | yes | yes | docs, examples, tests |
 | `strip_ansi` | helper | [ansi.R](../R/ansi.R#L103) | [yes](../man/strip_ansi.Rd) | yes | yes | tests |
 | `style` | function | [style.R](../R/style.R#L54) | [yes](../man/style.Rd) | yes | yes | README, docs, examples, tests |
 | `stylesheet` | function | [stylesheet.R](../R/stylesheet.R#L61) | [yes](../man/stylesheet.Rd) | yes | yes | docs, tests |
@@ -254,7 +263,7 @@ No `TODO`, `FIXME`, `HACK`, or `XXX` markers were found in `R/`, `tests/`, or `d
 
 - `24` direct exports have no textual reference in README/docs/examples/tests: `Animation`, `BlurEvent`, `Checkbox`, `FocusEvent`, `KeyValue`, `MarkdownView`, `Metric`, `MountEvent`, `OptionList`, `ProcessView`, `ProgressBar`, `RadioButton`, `RadioSet`, `Rule`, `Sparkline`, `Spinner`, `SplitHandle`, `SplitPane`, `TabPane`, `Timer`, `Toast`, `TreeNode`, `TreeView`, `UnmountEvent`.
   All are R6 class names; several are returned by constructors or represent event/widget types. This is a ?no direct reference? metric, not evidence that the classes are dead.
-- `68` exported symbols lack examples in Rd: `Animation`, `App`, `BlurEvent`, `Button`, `Checkbox`, `DataTable`, `Event`, `FocusEvent`, `Grid`, `Horizontal`, `Input`, `KeyEvent`, `KeyValue`, `Label`, `LogView`, `MarkdownView`, `MessageEvent`, `Metric`, `ModalScreen`, `MountEvent`, `MouseEvent`, `OptionList`, `Panel`, `PasteEvent`, `ProcessView`, `ProgressBar`, `RadioButton`, `RadioSet`, `ResizeEvent`, `Rule`, `Screen`, `ScreenBuffer`, `ScrollView`, `Select`, `Sparkline`, `Spinner`, `SplitHandle`, `SplitPane`, `TabPane`, `Tabs`, `TextArea`, `Timer`, `Toast`, `TreeNode`, `TreeView`, `UnmountEvent`, `Vertical`, `Widget`, `Worker`, `current_app`, `db_connection`, `db_metadata`, `db_table_source`, `inspect_json`, `inspect_signal`, `knit_termr`, `r_highlighter`, `register_layout`, `render_svg`, `run`, `snapshot_json`, `sql_editor`, `sql_highlighter`, `table_filter`, `table_source`, `unregister_layout`, `widget_snapshot`, `write_rendered`.
+- `72` exported symbols lack examples in Rd (including `DataProfile`, `PropertyGrid`, `StatusBar` and `db_query_source`, added in 0.9): `Animation`, `App`, `BlurEvent`, `Button`, `Checkbox`, `DataTable`, `Event`, `FocusEvent`, `Grid`, `Horizontal`, `Input`, `KeyEvent`, `KeyValue`, `Label`, `LogView`, `MarkdownView`, `MessageEvent`, `Metric`, `ModalScreen`, `MountEvent`, `MouseEvent`, `OptionList`, `Panel`, `PasteEvent`, `ProcessView`, `ProgressBar`, `RadioButton`, `RadioSet`, `ResizeEvent`, `Rule`, `Screen`, `ScreenBuffer`, `ScrollView`, `Select`, `Sparkline`, `Spinner`, `SplitHandle`, `SplitPane`, `TabPane`, `Tabs`, `TextArea`, `Timer`, `Toast`, `TreeNode`, `TreeView`, `UnmountEvent`, `Vertical`, `Widget`, `Worker`, `current_app`, `db_connection`, `db_metadata`, `db_table_source`, `inspect_json`, `inspect_signal`, `knit_termr`, `r_highlighter`, `register_layout`, `render_svg`, `run`, `snapshot_json`, `sql_editor`, `sql_highlighter`, `table_filter`, `table_source`, `unregister_layout`, `widget_snapshot`, `write_rendered`.
 - `0` exported symbols lack Rd usage: none.
 
 ## Reproduction
