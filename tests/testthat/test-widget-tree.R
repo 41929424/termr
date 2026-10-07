@@ -218,3 +218,16 @@ test_that("moving a widget keeps its reactive bindings; removing it ends them", 
   s("removed")
   expect_identical(l$text, "moved")
 })
+
+test_that("widget$on() accepts the selector before or after the handler", {
+  seen <- character()
+  box <- vertical(button("A", id = "a"), button("B", id = "b"))
+  box$on("button.pressed", function(event, app) seen <<- c(seen, "handler-first"), selector = "#a")
+  box$on("button.pressed", "#a", function(event, app) seen <<- c(seen, "selector-first"))
+  pilot <- test_app(app(box))
+  on.exit(pilot$stop(), add = TRUE)
+  pilot$click("#b")
+  expect_length(seen, 0L)
+  pilot$click("#a")
+  expect_setequal(seen, c("handler-first", "selector-first"))
+})

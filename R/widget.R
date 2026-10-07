@@ -192,7 +192,14 @@ Widget <- R6::R6Class(
     #' @param type Event type, or `"*"` for all.
     #' @param handler `function(event, app)`.
     #' @param selector Optional selector matched against the event sender.
+    #'   The order of [on()] / `app$on()`, `widget$on(type, selector,
+    #'   handler)`, is accepted too.
     on = function(type, handler, selector = NULL) {
+      if (is.character(handler) && is.function(selector)) {
+        swap <- handler
+        handler <- selector
+        selector <- swap
+      }
       h <- on(type, selector, handler)
       private$.handlers[[length(private$.handlers) + 1L]] <- h
       invisible(self)
