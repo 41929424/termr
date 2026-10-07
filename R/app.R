@@ -861,6 +861,9 @@ App <- R6::R6Class(
 
     process_queue = function() {
       count <- 0L
+      # Events already queued (e.g. one MountEvent per widget of a large
+      # tree) are not a loop; the guard counts what handlers add on top.
+      limit <- private$.queue$size() + private$max_events_per_tick
       repeat {
         if (length(private$.later)) {
           later <- private$.later
@@ -875,7 +878,7 @@ App <- R6::R6Class(
         batch(private$dispatch(event))
         count <- count + 1L
         if (private$.exit_requested) break
-        if (count >= private$max_events_per_tick) {
+        if (count >= limit) {
           warning("termr: too many events in one tick; possible event loop.", call. = FALSE)
           break
         }

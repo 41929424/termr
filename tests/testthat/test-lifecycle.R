@@ -130,3 +130,20 @@ test_that("a stopped app can be collected", {
   expect_true(collected)
   expect_identical(current_app(), current)
 })
+
+test_that("the event-loop guard ignores queued lifecycle events but stops real loops", {
+  big <- app(vertical(lapply(1:60, function(i) label(paste("row", i)))))
+  big$.__enclos_env__$private$max_events_per_tick <- 20L
+  expect_no_warning(pilot <- test_app(big))
+  pilot$stop()
+
+  looping <- app(
+    label("x", id = "x"),
+    on("ping", function(event, app) app$post_message("ping"))
+  )
+  looping$.__enclos_env__$private$max_events_per_tick <- 20L
+  pilot <- test_app(looping)
+  on.exit(pilot$stop(), add = TRUE)
+  looping$post_message("ping")
+  expect_warning(pilot$step(), "too many events")
+})
