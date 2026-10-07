@@ -202,12 +202,19 @@ TermrDBConnection <- R6::R6Class(
 #' @param line_numbers Show line numbers? Defaults to `TRUE`.
 #' @param tab_size Spaces inserted by Tab.
 #' @param ... Additional arguments passed to [TextArea].
+#' @param result_mode Query result mode: "data" materializes the result
+#'   (the default); "lazy" returns a [db_query_source()] for a paged table.
+#'   Lazy mode is available only with execution = "query".
+#' @param query_adapter Optional backend pager callbacks passed to
+#'   [db_query_source()].
 #' @return A `TextArea` subclass with an `execute()` method.
 #' @export
 sql_editor <- function(value = "", id = NULL, connection = NULL, execute_key = "ctrl+enter",
-                       execution = c("query", "execute"), line_numbers = TRUE, tab_size = 2L, ...) {
+                       execution = c("query", "execute"), line_numbers = TRUE, tab_size = 2L, ...,
+                       result_mode = c("data", "lazy"), query_adapter = NULL) {
   SQLEditor$new(value = value, id = id, connection = connection, execute_key = execute_key,
-                execution = match.arg(execution), line_numbers = line_numbers, tab_size = tab_size, ...)
+                execution = match.arg(execution), line_numbers = line_numbers, tab_size = tab_size,
+                result_mode = match.arg(result_mode), query_adapter = query_adapter, ...)
 }
 
 SQLEditor <- R6::R6Class(
@@ -215,11 +222,22 @@ SQLEditor <- R6::R6Class(
   public = list(
     connection = NULL,
     execution = "query",
+    result_mode = "data",
+    query_adapter = NULL,
     initialize = function(value = "", id = NULL, connection = NULL, execute_key = "ctrl+enter",
-                          execution = "query", line_numbers = TRUE, tab_size = 2L, ...) {
+                          execution = "query", line_numbers = TRUE, tab_size = 2L,
+                          result_mode = "data", query_adapter = NULL, ...) {
       check_scalar_character(execute_key, "execute_key")
       self$connection <- if (is.null(connection) || inherits(connection, "TermrDBConnection")) connection else db_connection(connection)
       self$execution <- check_choice(execution, c("query", "execute"), "execution")
+      self$result_mode <- check_choice(result_mode, c("data", "lazy"), "result_mode")
+      if (identical(self$result_mode, "lazy") && !identical(self$execution, "query")) {
+        stop("result_mode = 'lazy' requires execution = 'query'.", call. = FALSE)
+      }
+      if (!is.null(query_adapter) && !is.list(query_adapter)) {
+        stop("query_adapter must be NULL or a DBI query pager adapter list.", call. = FALSE)
+      }
+      self$query_adapter <- query_adapter
       super$initialize(value = value, id = id, line_numbers = line_numbers, tab_behavior = "indent",
                        tab_size = tab_size, highlighter = sql_highlighter(), ...)
       if (!is.null(self$connection)) self$bind(execute_key, "sql_execute", "Execute SQL")
@@ -235,10 +253,16 @@ SQLEditor <- R6::R6Class(
       started <- proc.time()[["elapsed"]]
       self$post_message("sql.query_started", list(sql = sql))
       tryCatch({
-        result <- if (identical(self$execution, "query")) self$connection$query(sql) else self$connection$execute(sql)
+        lazy <- identical(self$result_mode, "lazy")
+        result <- if (identical(self$execution, "query")) {
+          if (lazy) NULL else self$connection$query(sql)
+        } else self$connection$execute(sql)
+        source <- if (lazy) db_query_source(self$connection, sql, adapter = self$query_adapter) else NULL
         elapsed <- proc.time()[["elapsed"]] - started
-        rows <- if (is.data.frame(result)) nrow(result) else as.numeric(result)
-        data <- list(sql = sql, elapsed = elapsed, elapsed_ms = elapsed * 1000, rows = rows, result = result)
+        rows <- if (!is.null(source)) source$row_count() else if (is.data.frame(result)) nrow(result) else as.numeric(result)
+        data <- list(sql = sql, elapsed = elapsed, elapsed_ms = elapsed * 1000, rows = rows,
+                     result = result, result_type = if (is.null(source)) "data" else "source",
+                     source = source)
         self$post_message("sql.query_completed", data)
         invisible(c(list(ok = TRUE), data))
       }, error = function(e) {

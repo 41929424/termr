@@ -1,4 +1,8 @@
-# Development towards 0.4
+# Historical note: development towards 0.4
+
+This is an archived development plan for the 0.4 branch, retained for
+historical context. It does not describe the current 0.9 API or release plan;
+see [API stability](stability.md) and [migration to 1.0](migration-to-1.0.md).
 
 This branch is a development version, not a released 0.4.0. The scope is
 large UI/data performance, DataTable and TextArea workflows, and a small

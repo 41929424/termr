@@ -1,65 +1,142 @@
-# Extension APIs (experimental)
+# Extending termr from another package
 
-The widget factory, base widget class, screen buffer, `region()`, events,
-bindings, styles, themes, and layout registration are available to extension
-authors. APIs marked experimental can still change during 0.4 development.
-Built-in widgets may also subclass `Widget` with R6.
+This guide describes extension points available to code outside `termr`. The
+examples use exported functions and classes only. `tests/fixtures/external_extensions.R`
+contains runnable, namespace-qualified examples; the corresponding tests exercise
+them without using `termr:::`.
 
-## A small custom widget
+## Widgets, commands, and events
+
+`widget()` creates an R6-backed widget type from state, rendering, bindings,
+actions, event handlers, and child composition. It is enough for most custom
+controls. A widget can send a typed message with `$post_message()`; applications
+can subscribe with `on()`:
 
 ```r
-Counter <- widget(
+Counter <- termr::widget(
   "Counter",
-  state = list(count = reactive(0L)),
+  state = list(count = termr::reactive(0L)),
   render = function(self) sprintf("Count: %d", self$count),
-  bindings = list(bind("up", "increment", "Increment")),
-  actions = list(increment = function(self) self$count <- self$count + 1L),
-  style = style(border = "round", width = 16),
+  bindings = list(termr::bind("up", "increment", "Increment")),
+  actions = list(increment = function(self) {
+    self$count <- self$count + 1L
+    self$post_message("counter.changed", list(count = self$count))
+  }),
   focusable = TRUE
 )
+
 counter <- Counter(id = "counter")
+ui <- termr::app(
+  counter,
+  termr::on("counter.changed", "#counter", function(event, app) {
+    message(event$data$count)
+  })
+)
+ui$add_command(termr::command("Increment", function(app) {
+  app$query_one("#counter")$run_action("increment")
+}))
 ```
 
-The factory mounts children returned by `compose()`, installs bindings and
-handlers at mount, and disposes timers, workers, processes, and reactive
-bindings when removed. Use reactive state for changes that affect painting;
-call `self$invalidate()` when a custom method changes non-reactive content.
-Messages use `self$post_message()` and bubble through the widget tree.
+`Widget` is exported for advanced subclasses. `ScreenBuffer` and `region()` are
+also public for widgets that need to override `paint()` or arrange their own
+children. Such a subclass should use the documented public methods and respect
+the supplied clip region. The factory does not currently offer a custom
+`paint` callback; use an R6 subclass only when `render()` is insufficient.
 
-Override `render()` / `render_lines(width)` for text content, or `paint(buffer,
-area, st)` when drawing cells. Respect the supplied clip area and use
-`ScreenBuffer$put_text()` so wide characters and clipping stay correct. Use
-`region()` for child geometry. Focusable widgets should set `focusable = TRUE`
-and participate in the ordinary bindings and focus events.
+## Layouts
 
-## Custom layouts
-
-Names start with `custom_` and cannot replace built-ins. Register before
-creating a style that names the layout:
+`register_layout()` adds a custom container algorithm under a `custom_` name.
+The callbacks receive public child widgets and style/region values, and return
+one `region()` per child plus natural `width()` / `height(width)` measurements.
 
 ```r
-stack_arrange <- function(children, inner, parent_style) {
-  lapply(seq_along(children), function(i)
-    region(inner$x, inner$y + i - 1L, inner$width, 1L))
-}
-stack_measure <- function(children, parent_style) list(
-  width = function() 1L,
-  height = function(width) length(children)
+termr::register_layout(
+  "custom_stack",
+  arrange = function(children, inner, parent_style) {
+    lapply(seq_along(children), function(i)
+      termr::region(inner$x, inner$y + i - 1L, inner$width, 1L))
+  },
+  measure = function(children, parent_style) list(
+    width = function() 1L,
+    height = function(width) length(children)
+  )
 )
-register_layout("custom_stack", stack_arrange, stack_measure)
+container <- termr::vertical(
+  termr::label("one"),
+  style = termr::style(layout = "custom_stack")
+)
 ```
 
-`arrange()` receives the mounted children, available inner region, and
-computed parent style, then returns one `region()` per child. `measure()`
-returns `width()` and `height(width)` functions for natural sizing. Remove an
-experimental registration with `unregister_layout()` when an extension is
-unloaded. Layout functions must not mutate their children.
+Remove a registration when an extension unloads with
+`termr::unregister_layout("custom_stack")`. Registration and removal are
+experimental; registrations are process-wide and names must be unique.
 
-## Compatibility and testing
+## Themes
 
-Treat APIs documented in the package reference as public. Functions under
-`termr:::` and private R6 members are internal. Test custom widgets in a
-headless `test_app()`: mount, unmount, focus, keyboard input, resize, and
-clipping should all work without a real terminal. Test a custom layout at
-zero, one, and several children, and verify that `measure()` agrees with its
-arranged geometry.
+`termr_theme()` accepts custom semantic color names in addition to the built-in
+tokens. Styles refer to them as `$name`, and an app receives the theme through
+`app(theme = ...)`:
+
+```r
+theme <- termr::termr_theme("dark", extension_color = "#22aa88")
+ui <- termr::app(
+  termr::label("colored", style = termr::style(foreground = "$extension_color")),
+  theme = theme
+)
+```
+
+## Highlighters
+
+`text_area(highlighter = fn)` accepts a function of `(lines, state)` that
+returns a data frame with `start`, `end`, and `token` columns, or a list of
+such frames. Positions are 1-based grapheme ranges. Tokens are `keyword`,
+`string`, `comment`, `number`, `constant`, `operator`, `function`,
+`identifier`, `punctuation`, `parameter`, and `quoted_identifier`. A regular
+highlighter is called with one line; a function marked with
+`attr(fn, "termr.contextual") <- TRUE` receives the complete line vector and
+may use the supplied state to carry context across lines. This callback
+protocol is supported, but remains experimental while the text editor evolves.
+
+## Table sources and database adapters
+
+`table_source()` is the public protocol for lazy, in-memory, remote, or
+database-backed table providers. It accepts callbacks for row counts, column
+names, page reads, sorting, filtering, search, stable row keys, editing, refresh,
+and close. Pass the returned source to `data_table()`:
+
+```r
+source <- termr::table_source(
+  row_count = nrow(data),
+  column_names = names(data),
+  get_rows = function(start, count, columns = NULL) {
+    rows <- seq.int(start, min(nrow(data), start + count - 1L))
+    out <- data[rows, , drop = FALSE]
+    if (!is.null(columns)) out <- out[, columns, drop = FALSE]
+    out
+  }
+)
+ui <- termr::data_table(source)
+```
+
+The table-source protocol and `db_table_source()` are experimental; callback
+and capability details may change before 1.0. An extension can implement its
+own driver-specific paging by returning `table_source()` callbacks, as the
+SQLite fixture does in `tests/fixtures/external_extensions.R`.
+
+For metadata, `db_metadata(connection)` exposes portable DBI callbacks for
+schemas, tables, views, columns, and identifier quoting. A third-party DBI
+driver can participate through its normal DBI methods; database-specific
+source behavior can be layered on `table_source()`. `db_explorer()` currently
+uses `db_metadata()` itself and has no metadata-adapter injection or registry.
+An extension that needs non-DBI metadata or alternate object types must build
+its own widget/view using the public widget and table-source APIs. We leave
+this gap as-is rather than adding a registry without a concrete consumer.
+
+## External usage tests
+
+`tests/fixtures/external_extensions.R` is written in third-party style and
+qualifies every `termr` call with `termr::`. The tests cover a custom widget,
+binding/action/message flow, an app command, custom layout and theme, a custom
+highlighter, an in-memory table source, and DBI metadata plus a driver-specific
+table source when `DBI` and `RSQLite` are installed. The fixture contains no
+`termr:::` access.

@@ -153,12 +153,14 @@ detect_color_mode <- function(env = Sys.getenv(), windows = .Platform$OS.type ==
   if (!is.null(opt)) return(opt)
   if (nzchar(env_value(env, "NO_COLOR"))) return("none")
   colorterm <- tolower(env_value(env, "COLORTERM"))
-  if (colorterm %in% c("truecolor", "24bit") || nzchar(env_value(env, "WT_SESSION"))) {
-    return("truecolor")
-  }
+  remote_session <- nzchar(env_value(env, "SSH_TTY")) ||
+    nzchar(env_value(env, "SSH_CONNECTION")) || nzchar(env_value(env, "SSH_CLIENT"))
+  if (colorterm %in% c("truecolor", "24bit") ||
+      (nzchar(env_value(env, "WT_SESSION")) && !remote_session)) return("truecolor")
   if (windows) return("truecolor")
-  term <- env_value(env, "TERM")
+  term <- tolower(env_value(env, "TERM"))
   if (grepl("256", term, fixed = TRUE)) return("256")
+  if (grepl("^vt100($|-)", term)) return("none")
   if (term %in% c("dumb", "")) return("none")
   "16"
 }

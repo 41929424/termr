@@ -661,24 +661,34 @@ App <- R6::R6Class(
     shutdown = function() {
       driver <- private$.driver
       if (is.null(driver)) return(invisible())
+      failures <- character()
+      attempt <- function(label, fn) {
+        tryCatch(fn(), error = function(e) {
+          failures <<- c(failures, paste0(label, ": ", conditionMessage(e)))
+          invisible(NULL)
+        })
+      }
       for (screen in c(self$screens, list(private$.toasts))) {
         for (w in screen$walk()) {
-          if ("on_app_shutdown" %in% names(w) && is.function(w$on_app_shutdown)) w$on_app_shutdown()
+          if ("on_app_shutdown" %in% names(w) && is.function(w$on_app_shutdown)) {
+            attempt(paste0(class(w)[[1]], "$on_app_shutdown()"), w$on_app_shutdown)
+          }
         }
       }
       private$.running <- FALSE
       termr_env$apps <- Filter(function(a) !identical(a, self), termr_env$apps)
       private$.driver <- NULL
       private$.renderer <- NULL
-      private$.timers$cancel_all()
-      for (w in private$.workers) w$cancel()
+      attempt("cancel app timers", private$.timers$cancel_all)
+      for (w in private$.workers) attempt(paste0("cancel ", w$name), w$cancel)
       private$.workers <- list()
-      if (!is.null(private$.animator)) private$.animator$cancel_all()
+      if (!is.null(private$.animator)) attempt("cancel animations", private$.animator$cancel_all)
       private$.debug <- NULL
       private$.debug_timer <- NULL
       private$.queue$clear()
       private$.later <- list()
-      driver$stop()
+      attempt("stop terminal driver", driver$stop)
+      if (length(failures)) warning(paste("Errors during app shutdown:", paste(failures, collapse = "; ")), call. = FALSE)
       invisible()
     },
 
@@ -963,6 +973,11 @@ App <- R6::R6Class(
 
     dispatch = function(event) {
       target <- event$target %||% self$screen
+      lifecycle_event <- inherits(event, c("MountEvent", "UnmountEvent")) ||
+        event$type %in% c("screen.show", "screen.hide")
+      if (!is.null(event$target) && !lifecycle_event && !identical(event$target$app, self)) {
+        return(invisible())
+      }
       if (!is.null(private$.debug) || !is.null(private$.event_log)) private$record_event(event, target)
       path <- if (event$bubbles) c(list(target), target$ancestors()) else list(target)
       for (node in path) {
@@ -1018,22 +1033,22 @@ App <- R6::R6Class(
     },
 
     widget_unmounting = function(widget) {
+      removed <- widget$walk()
+      for (w in removed) widget_private(w)$cancel_timers()
+      for (worker in private$.workers) {
+        if (!is.null(worker$owner) && any(vapply(removed, identical, logical(1), worker$owner))) worker$cancel()
+      }
       if (!private$.running) return(invisible())
       private$.focus$release(widget)
       if (!is.null(private$.hovered) && (identical(private$.hovered, widget) ||
           any(vapply(private$.hovered$ancestors(), identical, logical(1), widget)))) {
         private$.hovered <- NULL
       }
-      removed <- widget$walk()
       if (!is.null(private$.captured) && any(vapply(removed, identical, logical(1), private$.captured))) {
         private$.captured <- NULL
       }
       for (w in removed) {
-        widget_private(w)$cancel_timers()
         self$post(UnmountEvent$new(w))
-      }
-      for (worker in private$.workers) {
-        if (!is.null(worker$owner) && any(vapply(removed, identical, logical(1), worker$owner))) worker$cancel()
       }
       self$request_repaint()
     },
@@ -1043,10 +1058,14 @@ App <- R6::R6Class(
       private$.focus$lost <- FALSE
       private$.mouse_down <- NULL
       private$.hovered <- NULL
-      for (w in screen$walk()) {
+      removed <- screen$walk()
+      for (w in removed) {
         widget_private(w)$cancel_timers()
         widget_private(w)$dispose_bindings()
         if (private$.running) self$post(UnmountEvent$new(w))
+      }
+      for (worker in private$.workers) {
+        if (!is.null(worker$owner) && any(vapply(removed, identical, logical(1), worker$owner))) worker$cancel()
       }
       if (private$.running && identical(screen, self$screen)) {
         self$post(Event$new("screen.hide", sender = screen, bubbles = FALSE))

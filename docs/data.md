@@ -26,6 +26,9 @@ data_table(
   estimated from the first and last 500 rows. Measured on Windows: a frame
   of a 1,000,000-row table at 120x40 takes about 20 ms to paint, moving
   the cursor about 20 ms per tick (see `tools/bench/bench.R`).
+* For larger-than-memory data, pass an experimental `table_source()`; see
+  [Lazy table sources](data-sources.md) for the fetch protocol, delegated
+  capabilities, refresh and lifecycle behavior.
 * Keys: arrows, Page Up/Down, Home/End, Enter. Mouse: click, header click,
   wheel.
 * `$sort(by, decreasing)`, `$filter(rows)`, `$move_cursor(row, column)`,

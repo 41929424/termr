@@ -5,6 +5,12 @@ test_that("capabilities follow TERM, COLORTERM and NO_COLOR", {
   expect_identical(caps(TERM = "xterm", COLORTERM = "truecolor")$colors, "truecolor")
   expect_true(caps(TERM = "xterm", COLORTERM = "24bit")$truecolor)
   expect_identical(caps(TERM = "xterm-256color", NO_COLOR = "1")$colors, "none")
+  # WT_SESSION describes a local Windows Terminal host, not the remote PTY.
+  expect_identical(caps(TERM = "xterm-256color", WT_SESSION = "local")$colors, "truecolor")
+  expect_identical(caps(TERM = "xterm-256color", WT_SESSION = "local",
+                        SSH_CONNECTION = "client server 1234 22")$colors, "256")
+  expect_identical(caps(TERM = "xterm-256color", WT_SESSION = "local",
+                        SSH_CLIENT = "client 1234 22")$colors, "256")
   expect_identical(caps(TERM = "xterm")$colors, "16")
   expect_identical(caps(TERM = "dumb")$colors, "none")
 })
@@ -15,6 +21,56 @@ test_that("a dumb terminal gets no interactive extras", {
   expect_false(d$bracketed_paste)
   expect_false(d$osc52)
   expect_false(d$hyperlinks)
+})
+
+test_that("common SSH TERM values do not imply newer terminal protocols", {
+  terms <- c("xterm", "xterm-256color", "screen", "screen-256color",
+             "tmux", "tmux-256color", "linux", "vt100")
+  caps_by_term <- lapply(terms, function(term) caps(TERM = term))
+  names(caps_by_term) <- terms
+
+  expect_identical(unname(vapply(caps_by_term, `[[`, "", "colors")),
+                   c("16", "256", "16", "256", "16", "256", "16", "none"))
+  expect_false(caps_by_term$vt100$mouse)
+  expect_false(caps_by_term$vt100$sgr_mouse)
+  expect_false(caps_by_term$vt100$bracketed_paste)
+  expect_false(caps_by_term$vt100$alternate_screen)
+  expect_false(caps_by_term$vt100$synchronized_output)
+  expect_false(caps_by_term$linux$mouse)
+  expect_false(caps_by_term$linux$bracketed_paste)
+  expect_false(caps_by_term$linux$synchronized_output)
+
+  # Multiplexer TERM names do not establish support for synchronized output
+  # or clipboard forwarding by the outside terminal.
+  for (term in c("xterm", "xterm-256color", "screen", "screen-256color",
+                 "tmux", "tmux-256color", "linux", "vt100")) {
+    expect_false(caps_by_term[[term]]$synchronized_output)
+    expect_false(caps_by_term[[term]]$osc52)
+  }
+  expect_true(caps(TERM = "xterm-256color", TERM_PROGRAM = "WezTerm")$synchronized_output)
+  remote_desktop <- caps(TERM = "xterm-256color", TERM_PROGRAM = "iTerm.app",
+                         SSH_TTY = "/dev/pts/4")
+  expect_false(remote_desktop$synchronized_output)
+  expect_false(remote_desktop$hyperlinks)
+  expect_false(remote_desktop$osc52)
+  tmux_capabilities <- caps(TERM = "tmux-256color", TERM_PROGRAM = "WezTerm")
+  expect_false(tmux_capabilities$synchronized_output)
+  expect_false(tmux_capabilities$hyperlinks)
+  expect_false(tmux_capabilities$osc52)
+  expect_true(caps(TERM = "xterm-256color", SSH_TTY = "/dev/pts/4",
+                   TERMR_OSC52 = "1")$osc52)
+  expect_no_error(caps(TERM = "xterm-256color", VTE_VERSION = "unknown"))
+})
+
+test_that("unsupported terminal protocols are omitted from mode changes", {
+  driver <- HeadlessDriver$new()
+  driver$capabilities <- caps(TERM = "vt100")
+  driver$mouse <- TRUE
+  expect_false(grepl("?1049h", driver$setup_sequence(), fixed = TRUE))
+  expect_false(grepl("?1000h", driver$setup_sequence(), fixed = TRUE))
+  expect_false(grepl("?2004h", driver$setup_sequence(), fixed = TRUE))
+  expect_false(grepl("?1049l", driver$teardown_sequence(), fixed = TRUE))
+  expect_false(grepl("?1000l", driver$teardown_sequence(), fixed = TRUE))
 })
 
 test_that("OSC 52 and hyperlinks are only enabled for recognised terminals", {

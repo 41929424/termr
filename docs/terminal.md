@@ -16,7 +16,16 @@ Fields: `colors` (`"truecolor"`, `"256"`, `"16"`, `"none"`), `unicode`, `mouse`,
 deliberately conservative: unknown features are off and termr falls back.
 Overrides: `options(termr.color_mode =)`, `options(termr.ascii = TRUE)`,
 `options(termr.osc52 =)`, `options(termr.hyperlinks =)`, or the environment
-variables `TERMR_OSC52=1` / `TERMR_HYPERLINKS=1`.
+variables `TERMR_OSC52=1` / `TERMR_HYPERLINKS=1`. An SSH or multiplexer
+session does not inherit OSC capability from a local terminal marker by
+default; explicitly enable OSC 52 only when the whole path supports it.
+
+Common remote `TERM` names are handled conservatively. `vt100` selects
+monochrome and does not enable SGR mouse, bracketed paste, or alternate screen;
+`linux` does not enable SGR mouse or bracketed paste. Generic `xterm` and
+`screen`/`tmux` names do not establish synchronized-output support. See
+[Running termr over SSH](ssh.md) for multiplexer caveats and the manual smoke
+checklist.
 
 ## Bracketed paste
 
@@ -31,9 +40,12 @@ not provide bracketed paste: pasted text arrives as individual keys.
 ## Clipboard
 
 `app$clipboard_write(text)` sets the app clipboard (`app$clipboard`) and, on
-terminals with OSC 52, the system clipboard. It is **write-only**: termr never
-reads the system clipboard. The payload is base64 encoded and limited to
-100 kB, so user text can never inject control sequences. `input()` and
+terminals with OSC 52, emits a write request to the system clipboard. Its
+`TRUE` result means termr sent the sequence; a terminal or multiplexer may
+ignore it, and termr cannot confirm that the OS clipboard changed. It is
+**write-only**: termr never reads the system clipboard. The payload is base64
+encoded and limited to 100 kB, so user text can never inject control
+sequences. `input()` and
 `text_area()` copy and cut through it. In tests, `pilot$system_clipboard()`
 returns the last OSC 52 text.
 

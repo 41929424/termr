@@ -1,4 +1,49 @@
-# termr 0.5.0 (development)
+# termr 0.9.0 (development)
+
+## Core workflow widgets
+
+* Added `status_bar()`, `property_grid()`, `record_view()`, `data_profile()`,
+  and `json_view()` for reactive status, record inspection, vector profiling,
+  and paged R-object trees. `record_view()` reuses the property-grid
+  renderer; `json_view()` reuses lazy TreeView nodes.
+* Added the `data-workbench` composition example. No mandatory runtime
+  dependency was added; optional JSON text parsing uses `jsonlite` from
+  Suggests.
+
+## SSH and terminal capabilities
+
+* Documented the existing interactive SSH/PTY architecture, clipboard boundary,
+  multiplexer limitations, and manual SSH smoke checklist in `docs/ssh.md`.
+* Capability detection now leaves synchronized output off for generic xterm and
+  multiplexer TERM values, treats `vt100` as monochrome, and avoids enabling
+  SGR mouse or bracketed paste for legacy Linux/VT100 terminals.
+
+## Static exports
+
+* Added terminal-independent text, Markdown, styled HTML and SVG rendering
+  from the virtual screen buffer, plus deterministic screen and widget-tree
+  snapshots.
+* Added optional JSON serialization (`jsonlite`), explicit knitr/Quarto
+  output (`knitr`), and a single `write_rendered()` convenience function.
+* Widget-tree snapshots omit arbitrary state and field values. Static exports
+  are snapshots; they do not run timers, workers, or an app event loop.
+
+# termr 0.7.0 (development)
+
+## Database workflows
+
+* Added `db_explorer()` with lazy DBI metadata browsing, SQLite table/view
+  browsing and lazy table previews, integrated SQL execution and result
+  tables, details, status, and in-memory query history.
+* Added `db_metadata()` as a small portable metadata interface. DBI and
+  RSQLite remain optional dependencies; SQL query results are materialized
+  and generic DBI query execution is synchronous.
+
+## Large data sources
+
+* Added the experimental `table_source()` protocol and lazy SQLite table
+  source, with viewport-driven pages, delegated sorting/filtering, bounded
+  caching and source lifecycle methods.
 
 ## SQL workflows
 

@@ -4,7 +4,7 @@
 \alias{DataTable}
 \title{DataTable widget}
 \description{
-A virtualised table for data frames. See \code{\link[=data_table]{data_table()}}.
+A virtualised table for data frames or lazy table sources. See \code{\link[=data_table]{data_table()}}.
 }
 \section{Super class}{
 \code{\link[termr:Widget]{Widget}} -> \code{DataTable}
@@ -23,7 +23,7 @@ A virtualised table for data frames. See \code{\link[=data_table]{data_table()}}
     \item{\code{zebra}}{Stripe alternate rows?}
 
     \item{\code{row_style}}{\code{NULL} or \verb{function(row, data)} returning a style for
-a data row (\code{row} is the original row number).}
+a data row (\code{row} is the original row number or source position).}
 
     \item{\code{cell_style}}{\code{NULL} or \verb{function(value, row, column)} returning a
 style for a cell.}
@@ -45,7 +45,7 @@ to reject the edit.}
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}
   \describe{
-    \item{\code{data}}{The data frame (assigning calls \code{set_data()}).}
+    \item{\code{data}}{The data frame or source (assigning calls \code{set_data()}).}
 
     \item{\code{row_count}}{Number of rows in the current view.}
 
@@ -57,7 +57,7 @@ to reject the edit.}
 
     \item{\code{offset_row, offset_column}}{Scroll offsets (rows / columns).}
 
-    \item{\code{view}}{Original row numbers of the rows in view order.}
+    \item{\code{view}}{Row numbers or source view positions in display order.}
 
     \item{\code{sort_state}}{\code{NULL} or a data frame (\code{column}, \code{decreasing}) of
 the current sort keys.}
@@ -74,6 +74,9 @@ the current sort keys.}
     \item \href{#method-DataTable-default_style}{\code{DataTable$default_style()}}
     \item \href{#method-DataTable-default_bindings}{\code{DataTable$default_bindings()}}
     \item \href{#method-DataTable-set_data}{\code{DataTable$set_data()}}
+    \item \href{#method-DataTable-refresh}{\code{DataTable$refresh()}}
+    \item \href{#method-DataTable-close}{\code{DataTable$close()}}
+    \item \href{#method-DataTable-source_stats}{\code{DataTable$source_stats()}}
     \item \href{#method-DataTable-sort}{\code{DataTable$sort()}}
     \item \href{#method-DataTable-clear_sort}{\code{DataTable$clear_sort()}}
     \item \href{#method-DataTable-toggle_sort}{\code{DataTable$toggle_sort()}}
@@ -166,7 +169,6 @@ the current sort keys.}
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="pseudo_states"><a href='../../termr/html/Widget.html#method-Widget-pseudo_states'><code>Widget$pseudo_states()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="query"><a href='../../termr/html/Widget.html#method-Widget-query'><code>Widget$query()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="query_one"><a href='../../termr/html/Widget.html#method-Widget-query_one'><code>Widget$query_one()</code></a></span></li>
-  <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="refresh"><a href='../../termr/html/Widget.html#method-Widget-refresh'><code>Widget$refresh()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="release_mouse"><a href='../../termr/html/Widget.html#method-Widget-release_mouse'><code>Widget$release_mouse()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="remove"><a href='../../termr/html/Widget.html#method-Widget-remove'><code>Widget$remove()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="termr" data-topic="Widget" data-id="remove_children"><a href='../../termr/html/Widget.html#method-Widget-remove_children'><code>Widget$remove_children()</code></a></span></li>
@@ -217,7 +219,7 @@ the current sort keys.}
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{data}}{A data frame or matrix.}
+      \item{\code{data}}{A data frame, matrix, or \code{\link[=table_source]{table_source()}}.}
       \item{\code{cursor}}{Cursor type.}
       \item{\code{columns}}{Named list of \code{\link[=column]{column()}} options.}
       \item{\code{formatters}}{Named list of formatter functions.}
@@ -271,8 +273,44 @@ the current sort keys.}
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{data}}{A data frame or matrix.}
+      \item{\code{data}}{A data frame, matrix, or \code{\link[=table_source]{table_source()}}.}
     }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-refresh"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-refresh}{}}}
+\subsection{\code{DataTable$refresh()}}{
+  Re-read the source row count and clear cached rows.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$refresh()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-close"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-close}{}}}
+\subsection{\code{DataTable$close()}}{
+  Explicitly close this table's source resource.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$close()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-DataTable-source_stats"></a>}}
+\if{latex}{\out{\hypertarget{method-DataTable-source_stats}{}}}
+\subsection{\code{DataTable$source_stats()}}{
+  Read structural fetch/cache counters for diagnostics.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{DataTable$source_stats()}
     \if{html}{\out{</div>}}
   }
 }
@@ -417,7 +455,7 @@ AND and evaluated in row chunks. A predicate may be a
 \if{html}{\out{<a id="method-DataTable-selected_row"></a>}}
 \if{latex}{\out{\hypertarget{method-DataTable-selected_row}{}}}
 \subsection{\code{DataTable$selected_row()}}{
-  The original row number under the cursor (or \code{NA}).
+  The data-frame row number or source row key under the cursor (or \code{NA}).
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{DataTable$selected_row()}

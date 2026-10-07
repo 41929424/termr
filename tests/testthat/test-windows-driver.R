@@ -98,6 +98,7 @@ test_that("Windows helper key and size fields validate before changing state", {
   expect_s3_class(size, "ResizeEvent")
   expect_identical(private$parse_line("K\t65\t97\t0")$key, "a")
   expect_identical(private$parse_line("K\t65\t1\t4")$key, "ctrl+a")
+  expect_identical(private$parse_line("K\t67\t3\t4")$key, "ctrl+c")
   expect_identical(private$parse_line("K\t65535\t65535\t0")$char, intToUtf8(65535L))
   expect_null(private$parse_line("K\t0\t55357\t0"))
   expect_identical(private$parse_line("K\t0\t56832\t0")$char, intToUtf8(0x1F600L))
