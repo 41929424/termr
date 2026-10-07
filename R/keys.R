@@ -149,6 +149,8 @@ csi_tilde_keys <- c(
   "19" = "f8", "20" = "f9", "21" = "f10", "23" = "f11", "24" = "f12"
 )
 
+max_csi_length <- 64L
+
 # Incremental parser for terminal input (UTF-8 text with escape sequences).
 # Incomplete escape sequences are kept until more input arrives; a lone
 # ESC is reported as "escape" by flush() when no more input follows.
@@ -165,6 +167,9 @@ KeyParser <- R6::R6Class(
 
     feed = function(text) {
       text <- enc2utf8(text)
+      # Bytes that are not UTF-8 (8-bit meta keys, non-UTF-8 locales) become
+      # U+FFFD instead of breaking the parser.
+      if (!validUTF8(text)) text <- iconv(text, "UTF-8", "UTF-8", sub = "\ufffd")
       events <- list()
       if (self$in_paste) {
         res <- private$feed_paste(text)
@@ -258,6 +263,9 @@ KeyParser <- R6::R6Class(
       n <- length(chars)
       j <- i + 2L
       while (j <= n && grepl("^[0-9;:<=>?]$", chars[[j]])) j <- j + 1L
+      # Real sequences are short; drop an over-long one instead of buffering
+      # input without bound.
+      if (j - i > max_csi_length) return(list(event = NULL, next_i = j))
       if (j > n) return(NULL)
       params <- paste(chars[seq_len(j - i - 2L) + i + 1L], collapse = "")
       final <- chars[[j]]

@@ -54,3 +54,19 @@ test_that("unknown or broken sequences do not wedge the parser", {
   ev <- p$feed("\u001b[99;99~x\u001b[?9999zy")
   expect_identical(tail(describe_events(ev), 2), c("key:x", "key:y"))
 })
+
+test_that("bytes that are not UTF-8 do not break the parser", {
+  p <- KeyParser$new()
+  bad <- rawToChar(as.raw(c(0x61, 0xff, 0x62)))
+  ev <- expect_no_error(p$feed(bad))
+  keys <- describe_events(ev)
+  expect_identical(keys[c(1L, 3L)], c("key:a", "key:b"))
+})
+
+test_that("an endless CSI sequence is dropped instead of buffered", {
+  p <- KeyParser$new()
+  p$feed("\u001b[")
+  for (i in 1:20) p$feed(strrep("1", 50))
+  expect_lt(nchar(p$pending), 100L)
+  expect_identical(describe_events(p$feed("\u001b[A")), "key:up")
+})
