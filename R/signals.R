@@ -250,12 +250,14 @@ watch <- function(fn, name = NULL) {
   node <- new_node("effect", fn = fn, name = name)
   # The first run happens now; reads inside it are tracked.
   rx$depth <- rx$depth + 1L
-  tryCatch(run_effect(node), error = function(e) {
+  completed <- FALSE
+  on.exit(if (!completed) {
     rx$depth <- rx$depth - 1L
     unlink_deps(node)
     node$disposed <- TRUE
-    stop(e)
-  })
+  }, add = TRUE)
+  run_effect(node)
+  completed <- TRUE
   rx$depth <- rx$depth - 1L
   flush_effects()
   structure(list(dispose = function() dispose_node(node), node = node), class = "termr_watch")
@@ -289,11 +291,15 @@ dispose <- function(x) {
 #' @export
 batch <- function(expr) {
   rx$depth <- rx$depth + 1L
-  value <- tryCatch(expr, error = function(e) {
+  # on.exit, not an error handler: an interrupt or any other unwind must
+  # also end the batch, or watchers would stay deferred for the session.
+  completed <- FALSE
+  on.exit(if (!completed) {
     rx$depth <- rx$depth - 1L
     try(flush_effects(), silent = TRUE)
-    stop(e)
-  })
+  }, add = TRUE)
+  value <- expr
+  completed <- TRUE
   rx$depth <- rx$depth - 1L
   flush_effects()
   invisible(value)
