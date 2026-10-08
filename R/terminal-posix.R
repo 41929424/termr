@@ -29,9 +29,19 @@ PosixDriver <- R6::R6Class(
   inherit = TerminalDriver,
   public = list(
     size_poll_interval = 0.5,
+    # How long an incomplete escape sequence (a lone Escape key, or the start of
+    # a fragmented sequence) waits for more input before it is flushed as is.
+    escape_timeout_ms = 30L,
 
     initialize = function(color_mode = detect_color_mode()) {
       self$color_mode <- color_mode
+      # Test hook (not a user setting): the PTY integration tests widen the
+      # window so that deliberately fragmented sequences cannot be cut by
+      # scheduler latency. A lone Escape is still flushed after this long.
+      override <- suppressWarnings(as.integer(Sys.getenv("TERMR_ESC_TIMEOUT_MS", "")))
+      if (length(override) == 1L && !is.na(override) && override >= 30L && override <= 5000L) {
+        self$escape_timeout_ms <- override
+      }
       self$capabilities <- terminal_capabilities(overrides = list(colors = color_mode, truecolor = identical(color_mode, "truecolor")))
       private$parser <- KeyParser$new()
     },
@@ -104,12 +114,21 @@ PosixDriver <- R6::R6Class(
     read_events = function(timeout = 0) {
       events <- list()
       wait_ms <- as.integer(round(min(timeout, self$size_poll_interval) * 1000))
-      if (private$parser$has_pending()) wait_ms <- min(wait_ms, 30L)
+      # An incomplete sequence is flushed only after `escape_timeout_ms` of
+      # silence since its last byte arrived -- not whenever the event loop
+      # happens to poll with a short (or zero) timeout, which would split a
+      # fragmented sequence into an Escape key plus characters.
+      pending <- private$parser$has_pending()
+      elapsed_ms <- if (pending) (now_seconds() - private$pending_since) * 1000 else 0
+      if (pending) wait_ms <- as.integer(max(0, min(wait_ms, ceiling(self$escape_timeout_ms - elapsed_ms))))
       status <- private$reader$poll_io(wait_ms)
       if (status[["output"]] == "ready") {
         chunk <- private$reader$read_output()
-        if (nzchar(chunk)) events <- private$parser$feed(chunk)
-      } else if (private$parser$has_pending()) {
+        if (nzchar(chunk)) {
+          events <- private$parser$feed(chunk)
+          private$pending_since <- now_seconds()
+        }
+      } else if (pending && (now_seconds() - private$pending_since) * 1000 >= self$escape_timeout_ms) {
         events <- private$parser$flush()
       }
       if (!private$reader$is_alive() && status[["output"]] != "ready") {
@@ -133,6 +152,7 @@ PosixDriver <- R6::R6Class(
     terminal_path = NULL,
     last_size = NULL,
     last_size_check = 0,
+    pending_since = 0,
 
     stty = function(args) {
       status <- system(paste("stty", args, "<", shQuote(private$terminal_path)))

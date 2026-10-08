@@ -27,8 +27,27 @@ app$run_worker(
 )
 ```
 
-The function runs in a fresh `Rscript --vanilla` session: pass data through
-`args`, packages through `packages`. The result travels in an RDS file and
+The function runs in a fresh `Rscript --vanilla` session. termr prepares a
+minimal closure containing the lexical bindings the function actually
+references. Unrelated enclosing bindings are excluded, and referenced values
+are captured by value. Simple scalar captures, nested helpers and recursive
+helpers work; the caller's original function is not modified.
+
+```r
+scalar <- 11L
+app$run_worker(function() scalar + 1L)  # returns 12L
+```
+
+Large objects still contribute to the job when explicitly referenced, and
+values in `args` serialize normally. Prefer `args` for large data and list
+required packages in `packages`; this makes the job's inputs explicit rather
+than making large data free to transfer. Active bindings and dynamic lexical
+lookup (such as `get()`, `eval()` or `parent.frame()`) are rejected before
+spawn. Resolve those values in the caller and pass them as named arguments.
+
+The child receives the parent's library search paths. `R_TESTS` is cleared
+to prevent check-session startup hooks from rerunning tests, and the worker
+uses the installed package helper. The result travels in an RDS file and
 progress in an append-only file, so the job's own output is never parsed as
 protocol. Output lines have control characters removed; at most 200 lines are
 delivered per tick; the last 1,000 are kept in `worker$stdout` / `$stderr`.
@@ -59,8 +78,10 @@ Events (bubbling from the owner widget or the screen, `event$data$worker`):
 
 ## Secrets and temporary files
 
-A worker job (the function, including its closure environment, and `args`)
-is serialized to a temporary file that the worker process reads; the file is
+A worker job (the function with its referenced lexical bindings, plus `args`)
+is serialized to a temporary file that the worker process reads; unrelated
+enclosing state is omitted. Explicitly referenced objects, including large
+values and environments, still serialize. The file is
 removed when the worker ends. Workers and `run_process()` programs inherit
 the app's environment variables. Avoid putting secrets into worker closures
 or arguments unnecessarily, and pass only the variables a program needs

@@ -16,12 +16,15 @@ Checks:
     alternate screen is left.
 """
 import fcntl
+import argparse
 import errno
 import os
+import platform
 import pty
 import re
 import select
 import signal
+import subprocess
 import struct
 import sys
 import termios
@@ -57,48 +60,80 @@ def require_current_install():
 class Session:
     active = []
 
-    def __init__(self, script=None, cols=60, rows=20, tty_mode="controlling", term="xterm-256color", command=None):
+    def __init__(self, script=None, cols=60, rows=20, tty_mode="controlling", term="xterm-256color", command=None,
+                 extra_env=None):
         env = os.environ.copy()
+        env.update(extra_env or {})
         for key in ("COLORTERM", "TERM_PROGRAM", "WT_SESSION", "KITTY_WINDOW_ID",
                     "WEZTERM_EXECUTABLE", "ALACRITTY_LOG", "VTE_VERSION"):
             env.pop(key, None)
         env["TERM"] = term
         print(f"PTY child: TERM={term!r} COLORTERM='' TERM_PROGRAM='' tty_mode={tty_mode}", flush=True)
         command = command or [RSCRIPT, script]
-        self.pid, self.fd = pty.fork()
-        if self.pid == 0:
-            fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-            if tty_mode == "controlling":
+        # fork() copies Python's buffered output into the child. Flush both
+        # streams so a previous case's failure cannot reappear in this PTY.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        if tty_mode == "stdin":
+            # Open the slave before fork/setsid. A session leader that merely
+            # inherits this descriptor does not acquire a controlling TTY.
+            master, slave = os.openpty()
+            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+            try:
+                self.pid = os.fork()
+            except BaseException:
+                os.close(master)
+                os.close(slave)
+                raise
+            if self.pid == 0:
+                os.close(master)
+                os.setsid()
+                for target in (0, 1, 2):
+                    os.dup2(slave, target)
+                if slave > 2:
+                    os.close(slave)
                 try:
                     tty = os.open("/dev/tty", os.O_RDWR)
-                    valid = os.isatty(0) and os.tcgetpgrp(tty) == os.getpgrp()
-                    os.close(tty)
                 except OSError:
-                    valid = False
-                os.write(1, b"__PTY_CTTY_OK__\n" if valid else b"__PTY_CTTY_MISSING__\n")
-            elif tty_mode in ("stdin", "none"):
-                # Detaching a session leader sends SIGHUP. Ignore it only
-                # for this operation, then restore normal child semantics.
-                old_hup = signal.signal(signal.SIGHUP, signal.SIG_IGN)
-                fcntl.ioctl(0, termios.TIOCNOTTY, 0)
-                signal.signal(signal.SIGHUP, old_hup)
-                if tty_mode == "none":
-                    null = os.open(os.devnull, os.O_RDONLY)
-                    os.dup2(null, 0)
-                    os.close(null)
-                    os.write(1, b"__PTY_NO_TTY__\n")
-                else:
-                    try:
-                        tty = os.open("/dev/tty", os.O_RDWR)
-                        os.close(tty)
-                        os.write(1, b"__PTY_STDIN_FALLBACK_INVALID__\n")
-                    except OSError:
-                        os.write(1, b"__PTY_STDIN_ONLY__\n" if os.isatty(0) else b"__PTY_STDIN_NOT_TTY__\n")
+                    tty = None
+                if tty is not None:
+                    os.close(tty)
+                valid = os.isatty(0) and tty is None
+                os.write(1, b"__PTY_STDIN_ONLY__\n" if valid else b"__PTY_STDIN_FALLBACK_INVALID__\n")
+                if not valid:
+                    os._exit(98)
+                os.execvpe(command[0], command, env)
+            self.fd = master
+            os.close(slave)
+        elif tty_mode == "controlling":
+            self.pid, self.fd = pty.fork()
+        else:
+            raise ValueError(f"unsupported PTY mode: {tty_mode}")
+        if self.pid == 0:
+            fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+            try:
+                tty = os.open("/dev/tty", os.O_RDWR)
+                valid = os.isatty(0) and os.tcgetpgrp(tty) == os.getpgrp()
+                os.close(tty)
+            except OSError:
+                valid = False
+            os.write(1, b"__PTY_CTTY_OK__\n" if valid else b"__PTY_CTTY_MISSING__\n")
             os.execvpe(command[0], command, env)
         self.output = ""
         self.status = None
         self.eof = False
+        self.pgid = None
         self.active.append(self)
+
+    def identity(self):
+        """pid / process group / session of the child. A pty child is a session
+        leader (so pgid == pid), but that is verified, never assumed; the group
+        is remembered because getpgid() fails once the child is reaped."""
+        try:
+            self.pgid = os.getpgid(self.pid)
+            return f"pid={self.pid} pgid={self.pgid} sid={os.getsid(self.pid)}"
+        except ProcessLookupError:
+            return f"pid={self.pid} (gone) last-known pgid={self.pgid}"
 
     def resize(self, cols, rows):
         fcntl.ioctl(self.fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
@@ -110,7 +145,9 @@ class Session:
     def read(self, seconds):
         end = time.monotonic() + seconds
         while not self.eof and time.monotonic() < end:
-            ready, _, _ = select.select([self.fd], [], [], 0.05)
+            # Never block past the requested duration: a "10 ms" read between
+            # fragments must not become a 50 ms gap.
+            ready, _, _ = select.select([self.fd], [], [], max(0.0, min(0.05, end - time.monotonic())))
             if ready:
                 try:
                     data = os.read(self.fd, 65536)
@@ -169,15 +206,52 @@ class Session:
         raise AssertionError(f"the app did not exit; output tail: {strip(self.output)[-400:]!r}")
 
     def close(self):
-        # A failed assertion must not leave the R process/input reader behind.
+        """Kill what is left of the child's process group and reap it.
+
+        Never assumes pid == pgid and never signals the harness' own group.
+        Returns a list of unexpected problems (empty when clean) instead of
+        raising, so one case's cleanup can not take the following cases down.
+        """
+        problems = []
+        leader_alive = not self.exited()
+        pgid = self.pgid
+        if leader_alive:
+            try:
+                pgid = self.pgid = os.getpgid(self.pid)
+            except ProcessLookupError:
+                leader_alive = False
+        if pgid and pgid > 1 and pgid != os.getpgrp():
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # nothing left in the group
+            except PermissionError as error:
+                # macOS answers EPERM for a group whose only members are
+                # already-exited zombies. That is expected once the leader is
+                # gone; with a live leader it is a real problem.
+                if leader_alive:
+                    try:
+                        os.kill(self.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    except PermissionError:
+                        problems.append(f"cannot kill live child ({self.identity()}): {error}")
+        elif leader_alive:
+            try:
+                os.kill(self.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        if self.status is None:
+            try:
+                _, status = os.waitpid(self.pid, 0)
+                self.status = os.waitstatus_to_exitcode(status)
+            except ChildProcessError:
+                self.status = self.status if self.status is not None else -1
         try:
-            os.killpg(self.pid, signal.SIGKILL)
-        except ProcessLookupError:
+            os.close(self.fd)
+        except OSError:
             pass
-        if not self.exited():
-            _, status = os.waitpid(self.pid, 0)
-            self.status = os.waitstatus_to_exitcode(status)
-        os.close(self.fd)
+        return problems
 
 
 def teardown_modes(s):
@@ -194,34 +268,53 @@ def check(name, condition, detail=""):
     print(("PASS " if condition else "FAIL ") + name + (f": {detail}" if detail and not condition else ""))
     if not condition:
         check.failed += 1
+        if os.environ.get("GITHUB_ACTIONS"):
+            # Surface the failure in the run's annotations (logs need a login).
+            text = f"{name}: {detail}".replace("%", "%25").replace(chr(13), "%0D").replace(chr(10), "%0A")
+            print(f"::error title=PTY {platform.system()}::{text[:1800]}", flush=True)
 
 
 check.failed = 0
 
 
 def normal_session():
-    s = Session(os.path.join(ROOT, "inst", "examples", "hello.R"))
-    s.wait_for("termr demo")
-    check("PTY harness provides a controlling terminal", "__PTY_CTTY_OK__" in s.output,
-          "pty.fork child could not open /dev/tty as its controlling terminal")
-    attrs = s.attrs()
-    check("raw mode while running (no ICANON, no ECHO)",
-          not (attrs[3] & termios.ICANON) and not (attrs[3] & termios.ECHO))
-    check("alternate screen entered", "\x1b[?1049h" in s.output)
-    s.send("Ada")
-    s.send("\t")
-    s.send("\r")
-    s.wait_for("Hello, Ada")
-    check("typing, Tab and Enter", True)
-    s.send("\x1b[D")  # an arrow key escape sequence must not print
-    check("escape sequences are parsed", "[D" not in strip(s.output[-200:]))
-    before_resize = s.output.count("\x1b[2J")
-    s.resize(40, 12)
-    check("resize redraws", wait_until(lambda: s.output.count("\x1b[2J") > before_resize, s))
-    s.send("\x03")  # Ctrl+C quits (raw mode: it is a key)
-    code = s.wait_exit()
-    check("Ctrl+C quits with status 0", code == 0, f"status {code}")
-    teardown_modes(s)
+    with tempfile.TemporaryDirectory(prefix="termr-pty-hello-") as directory:
+        log = os.path.join(directory, "events.log")
+        os.environ["TERMR_PTY_LOG"] = log
+        s = Session(os.path.join(HERE, "hello-app.R"))
+        s.wait_for("termr demo", 60)
+        print("PTY child identity:", s.identity(), flush=True)
+        check("PTY harness provides a controlling terminal", "__PTY_CTTY_OK__" in s.output,
+              "pty.fork child could not open /dev/tty as its controlling terminal")
+        check("hello app ready", wait_until(lambda: "ready" in read_log(log), s, 60), repr(read_log(log)))
+        attrs = s.attrs()
+        check("raw mode while running (no ICANON, no ECHO)",
+              not (attrs[3] & termios.ICANON) and not (attrs[3] & termios.ECHO))
+        check("alternate screen entered", "\x1b[?1049h" in s.output)
+        s.send("Ada")
+        check("typing reaches input", wait_until(lambda: "input value=Ada" in read_log(log), s, 30),
+              f"log={read_log(log)!r}; screen tail={strip(s.output)[-300:]!r}")
+        s.send("\t")
+        check("Tab focuses button", wait_until(lambda: "button focused" in read_log(log), s, 30),
+              f"log={read_log(log)!r}; screen tail={strip(s.output)[-300:]!r}")
+        s.send("\r")
+        # Each event marker proves one transport stage; screen text is not
+        # used because a diff renderer may split changed lines into runs.
+        pressed = wait_until(lambda: "pressed name=Ada" in read_log(log), s, 30)
+        check("Enter presses button", pressed,
+              f"log={read_log(log)!r}; screen tail={strip(s.output)[-300:]!r}")
+        print(f"INFO result label text contiguous on the stream: {'Hello, Ada' in strip(s.output)} "
+              "(a diff renderer may split it into several cursor-addressed runs)", flush=True)
+        s.send("\x1b[D")  # an arrow key escape sequence must not print
+        s.read(0.3)
+        check("escape sequences are parsed", "[D" not in strip(s.output[-200:]))
+        before_resize = s.output.count("\x1b[2J")
+        s.resize(40, 12)
+        check("resize redraws", wait_until(lambda: s.output.count("\x1b[2J") > before_resize, s))
+        s.send("\x03")  # Ctrl+C quits (raw mode: it is a key)
+        code = s.wait_exit()
+        check("Ctrl+C quits with status 0", code == 0, f"status {code}")
+        teardown_modes(s)
 
 
 def read_log(path):
@@ -285,20 +378,6 @@ def keys_session():
             send_expect("key " + name, [seq],
                         lambda ev, name=name: any(e.split(" [", 1)[0] == "key " + name for e in ev))
 
-        # Delays here intentionally split the transport, not synchronization.
-        for name, chunks, expected in (
-            ("escape sequence split across reads", [b"\x1b", b"[1;", b"5C"], "key ctrl+right"),
-            ("UTF-8 split across reads", [bytes([b]) for b in "€".encode()], "key € [€]"),
-            ("bracketed paste fragmented", [b"\x1b[200~first line\nsec", "ond é\x1b[201~".encode()],
-             "paste first line<LF>second é"),
-        ):
-            mark = len(read_log(log))
-            for chunk in chunks:
-                s.send(chunk)
-                s.read(0.01)
-            check(name, wait_until(lambda: expected in read_log(log)[mark:], s),
-                  repr(read_log(log)[mark:]))
-
         send_expect("mouse press/release/wheel",
                     ["\x1b[<0;5;1M\x1b[<0;5;1m\x1b[<64;5;1M"],
                     lambda ev: all(line in ev for line in (
@@ -334,6 +413,48 @@ def keys_session():
         teardown_modes(s)
         s.close()
         Session.active.remove(s)
+def fragments_session():
+    """Fragmented input, with the escape timeout widened for this session only.
+
+    The runtime default (30 ms of silence) is what disambiguates a real Escape
+    key, and it stays in force in every other session. Here the window is made
+    wide enough that scheduler latency on a loaded CI runner can not cut a
+    sequence between two deliberate, well separated writes; each fragment is a
+    separate OS write and (with the pause between them) a separate read.
+    """
+    with tempfile.TemporaryDirectory(prefix="termr-pty-frag-") as directory:
+        log = os.path.join(directory, "events.log")
+        os.environ["TERMR_PTY_LOG"] = log
+        s = Session(os.path.join(HERE, "keys-app.R"), extra_env={"TERMR_ESC_TIMEOUT_MS": "2500"})
+        check("fragments app starts", wait_until(lambda: "ready" in read_log(log), s, 60))
+        s.wait_for("keys app")
+        for name, chunks, expected in (
+            ("escape sequence split across reads", [b"\x1b", b"[1;", b"5C"], "key ctrl+right"),
+            ("UTF-8 split across reads", [bytes([b]) for b in "€".encode()], "key € [€]"),
+            ("bracketed paste fragmented", [b"\x1b[200~first line\nsec", "ond é\x1b[201~".encode()],
+             "paste first line<LF>second é"),
+        ):
+            mark = len(read_log(log))
+            for chunk in chunks:
+                s.send(chunk)
+                s.read(0.15)  # far below the 2.5 s window, far above one read cycle
+            check(name, wait_until(lambda: expected in read_log(log)[mark:], s),
+                  repr(read_log(log)[mark:]))
+            events = read_log(log)[mark:]
+            check(name + ": no stray Escape or bracket keys",
+                  not any(e.startswith(("key escape", "key [", "key 1", "key ;")) for e in events), repr(events))
+        # A lone Escape is still flushed as the Escape key once the window passes.
+        mark = len(read_log(log))
+        s.send(b"\x1b")
+        check("lone Escape is flushed as the Escape key after the timeout",
+              wait_until(lambda: "key escape" in read_log(log)[mark:], s, 8), repr(read_log(log)[mark:]))
+        s.send("\x11")
+        check("fragments session exits", s.wait_exit() == 0)
+        teardown_modes(s)
+        s.close()
+        Session.active.remove(s)
+
+
 def error_session():
     s = Session(os.path.join(HERE, "error-app.R"))
     s.wait_for("press x")
@@ -383,13 +504,78 @@ def degraded_session():
         Session.active.remove(s)
 def no_tty_session():
     script = os.path.join(HERE, "no-tty-app.R")
-    s = Session(script, tty_mode="none")
-    s.wait_for("termr needs an interactive terminal", 10)
-    code = s.wait_exit()
-    output = strip(s.output)
-    check("no-TTY session fails with a termr error", code == 42 and "TERM_ERROR:" in output,
-          f"status {code}: {output[-300:]!r}")
-    check("no-TTY error is not opaque ENXIO", "system error 6" not in output and "No such device" not in output)
+    # A fresh process session with /dev/null on stdin has no controlling TTY.
+    # Check that topology before exec, without touching a PTY or TIOCNOTTY.
+    preflight = (
+        "import os,sys; "
+        "tty=os.isatty(0); "
+        "\ntry: fd=os.open('/dev/tty',os.O_RDWR)\n"
+        "except OSError: control=False\n"
+        "else: os.close(fd); control=True\n"
+        "print('__NO_TTY_TOPOLOGY__ stdin_isatty=%s controlling=%s' % (tty,control),flush=True)\n"
+        "if tty or control: sys.exit(98)\n"
+        "os.execvp(sys.argv[1],[sys.argv[1],sys.argv[2]])")
+    result = subprocess.run([sys.executable, "-c", preflight, RSCRIPT, script],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, timeout=10,
+                            start_new_session=True, env=os.environ.copy())
+    output = strip(result.stdout)
+    check("no-TTY subprocess has no terminal", "__NO_TTY_TOPOLOGY__ stdin_isatty=False controlling=False" in output,
+          output[-300:])
+    lower_output = output.lower()
+    check("no-TTY session fails with a termr error", result.returncode != 0 and
+          "term_error:" in lower_output and "termr" in lower_output and
+          "interactive terminal" in lower_output and
+          ("output is not a terminal" in lower_output or
+           "terminal is unavailable" in lower_output or
+           "stdin is not a tty" in lower_output),
+          f"status {result.returncode}: {output[-300:]!r}")
+    check("no-TTY error is not opaque ENXIO", "enxio" not in lower_output and
+          "system error 6" not in lower_output and "no such device or address" not in lower_output and
+          "stty:" not in lower_output)
+
+
+PENDIN = 0x20000000
+pendin_control = {False: False, True: False}
+
+
+def stty_settings(output):
+    # `stty -g` prints colon-separated hex fields on Linux and
+    # "gfmt1:name=hex:..." on macOS/BSD.
+    return re.findall(r"^(gfmt1:\S+|[0-9a-f]+(?::[0-9a-f]+){8,})\s*$", strip(output), re.M)
+
+
+def without_pendin(settings):
+    if not settings.startswith("gfmt1:"):
+        return settings
+    return re.sub(r"(?<=:lflag=)[0-9a-fA-F]+",
+                  lambda match: format(int(match.group(), 16) & ~PENDIN, "x"), settings, count=1)
+
+
+def added_pendin(before, after):
+    if platform.system() != "Darwin" or without_pendin(before) != without_pendin(after):
+        return False
+    flags = [re.search(r":lflag=([0-9a-fA-F]+)", x) for x in (before, after)]
+    return (all(flags) and not (int(flags[0].group(1), 16) & PENDIN)
+            and bool(int(flags[1].group(1), 16) & PENDIN))
+
+
+def control_termios_session(stdin_only=False):
+    """No termr/R process: test whether the PTY+stty lifecycle adds PENDIN."""
+    cmd = 'saved=$(stty -g); printf "%s\\n" "$saved"; stty raw -echo; stty "$saved"; printf "\\n"; stty -g'
+    s = Session(tty_mode="stdin" if stdin_only else "controlling", command=["sh", "-c", cmd])
+    status = s.wait_exit()
+    settings = stty_settings(s.output)
+    check(f"no-termr stty control exits (stdin_only={stdin_only})", status == 0, f"status={status}; output={strip(s.output)[-400:]!r}")
+    check(f"no-termr stty control snapshots (stdin_only={stdin_only})", len(settings) == 2, repr(settings))
+    if len(settings) != 2:
+        return
+    before, after = settings
+    pendin_control[stdin_only] = added_pendin(before, after)
+    check(f"no-termr stty control changes only PENDIN (stdin_only={stdin_only})",
+          before == after or pendin_control[stdin_only], repr(settings))
+    print(f"INFO no-termr stty control stdin_only={stdin_only}: "
+          f"{'PENDIN added' if pendin_control[stdin_only] else 'exact match' if before == after else 'other difference'}", flush=True)
 
 
 def termios_restored(stdin_only=False, term="xterm-256color", handler_error=False):
@@ -401,23 +587,36 @@ def termios_restored(stdin_only=False, term="xterm-256color", handler_error=Fals
     s.wait_for("press x" if handler_error else "termr demo", 60)
     s.send("x" if handler_error else "\x03")
     status = s.wait_exit()
-    settings = re.findall(r"^([0-9a-f:]{20,})\s*$", strip(s.output), re.M)
+    settings = stty_settings(s.output)
+    matched = len(settings) >= 2 and (settings[0] == settings[-1] or
+              (pendin_control[stdin_only] and added_pendin(settings[0], settings[-1])))
     check(f"stty restored (stdin_only={stdin_only}, TERM={term}, error={handler_error})",
-          len(settings) >= 2 and settings[0] == settings[-1], f"found {settings}")
+          matched, f"found {settings}; control_PENDIN={pendin_control[stdin_only]}")
     check("restoration session status", status != 0 if handler_error else status == 0, f"status {status}")
     teardown_modes(s)
 
 
+def close_sessions(label):
+    """Clean up every live session; a cleanup failure is this case's failure
+    only and never stops the remaining cases."""
+    for session in list(Session.active):
+        try:
+            for problem in session.close():
+                check(f"{label}: cleanup", False, problem)
+        except Exception as error:  # noqa: BLE001 - keep later cases alive
+            check(f"{label}: cleanup", False, f"{type(error).__name__}: {error}")
+    Session.active.clear()
+
+
 def run_cases(cases):
     for case in cases:
+        label = getattr(case, "__name__", "case")
         try:
             case()
         except Exception as error:
-            check(case.__name__, False, str(error))
+            check(label, False, str(error))
         finally:
-            for session in Session.active:
-                session.close()
-            Session.active.clear()
+            close_sessions(label)
     if check.failed:
         print(f"{check.failed} check(s) failed")
         sys.exit(1)
@@ -425,9 +624,21 @@ def run_cases(cases):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--case", choices=("stdin_fallback_session", "no_tty_session"),
+                        help="run one failing session in an independent harness process")
+    parser.add_argument("--exclude-case", action="append", default=[],
+                        choices=("stdin_fallback_session", "no_tty_session"))
+    options = parser.parse_args()
     require_current_install()
-    run_cases([normal_session, keys_session, error_session, termios_restored,
-               stdin_fallback_session, no_tty_session, degraded_session,
-               lambda: termios_restored(stdin_only=True),
-               lambda: termios_restored(term="dumb"),
-               lambda: termios_restored(handler_error=True)])
+    cases = [normal_session, keys_session, fragments_session, error_session,
+             control_termios_session, lambda: control_termios_session(stdin_only=True),
+             termios_restored, stdin_fallback_session, no_tty_session, degraded_session,
+             lambda: termios_restored(stdin_only=True),
+             lambda: termios_restored(term="dumb"),
+             lambda: termios_restored(handler_error=True)]
+    if options.case:
+        cases = [globals()[options.case]]
+    else:
+        cases = [case for case in cases if case.__name__ not in options.exclude_case]
+    run_cases(cases)

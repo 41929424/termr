@@ -6,16 +6,32 @@ headless tests exercise event/render behavior, parser tests exercise driver
 translation, and PTY tests exercise a real terminal interface and restoration.
 A parser or headless pass does not certify a particular terminal host.
 
-## CI coverage
+## RC1 validation
 
-| Platform / path | Automated coverage | Limits |
-|---|---|---|
-| Linux PTY, `/dev/tty` | `tools/pty/pty-check-ci.py` exercises raw mode, key input, UTF-8, mouse press/release/wheel/drag, bracketed paste, resize storms, Ctrl+C, handler errors, normal/error termios restoration, stdin-only fallback, and no-TTY errors. | Runs on GitHub-hosted Ubuntu; it does not cover every Linux terminal emulator. |
-| macOS PTY, `/dev/tty` | Same harness on GitHub-hosted macOS. | Does not cover every terminal emulator or remote shell. |
-| Windows input protocol | Windows CI runs deterministic `WindowsDriver` record parsing and shared mouse, paste, Unicode, bounds, and lifecycle tests. PowerShell helper records are covered through the parser contract. | GitHub Actions does not promise a Windows Terminal or interactive ConPTY session for this job. CI parses the helper script and tests its wire protocol, but does not launch it against a real console. |
-| Windows Terminal / ConPTY | No automated interactive session currently. | Requires a real console host; the Windows CI shell may expose redirected pipes instead. |
-| PowerShell console / conhost | No end-to-end console-mode test currently. | Requires an attached interactive console to verify native input modes and restoration. |
-| RStudio Terminal | Not covered by CI. | Requires an installed RStudio desktop session and its integrated terminal. |
+Validated source: `1846527d3968cdd12fa9900bbe80a9f2a89a1a3e`, tagged
+`v1.0.0-rc1` with package version `0.9.0.9000`. Full workflow
+[37758703750](https://github.com/41929424/termr/actions/runs/37758703750)
+passed. Manual statuses below record the maintainer's RC smoke reports;
+they do not certify every emulator, version or client/server combination.
+
+| Environment | Automated | Manual | Confidence / notes |
+|---|---|---|---|
+| Ubuntu R release, oldrel-1, 4.1, devel | PASS | Not a terminal-host test | Four R CMD check jobs: 0 ERROR / WARNING / NOTE, plus passing extended suites. |
+| macOS R release | PASS | NOT RUN for a real terminal | R CMD check: 0 ERROR / WARNING / NOTE; extended suite PASS. |
+| Windows R release | PASS | See real-console row | R CMD check: 0 ERROR / WARNING / NOTE; extended suite PASS. |
+| SQL integration (DBI + RSQLite) | PASS | No separate database-host certification | Conditional database tests ran with both packages installed. |
+| Linux PTY, `/dev/tty` and stdin-TTY fallback | PASS | See Linux SSH row | Raw mode, keyboard/UTF-8, mouse click/wheel/drag, bracketed paste, resize storms, Ctrl+C, handler errors, restoration and no-TTY errors. |
+| macOS PTY | PASS | NOT RUN for a real terminal | Same harness on GitHub-hosted macOS; emulator behavior still needs manual testing. |
+| Windows input/parser | PASS | Not a real-console test | Deterministic wire parser, mouse/paste/Unicode/bounds/lifecycle tests and PowerShell script parsing. |
+| Windows real interactive console | Parser coverage above | PASS | Real-console RC smoke was performed and reported PASS, including the native-crash check. Host/version details were not recorded here. |
+| Linux over real `ssh -t` | POSIX mechanics above | PASS | RC smoke on a real SSH path; arbitrary clients, servers and clipboard forwarding are not certified. |
+| tmux | Capability/input unit coverage only | NOT RUN | No manual multiplexer smoke report. |
+| screen | Capability/input unit coverage only | NOT RUN | No manual multiplexer smoke report. |
+| RStudio Terminal | No host-specific CI | NOT RUN | Requires an installed RStudio desktop/server terminal session. |
+
+**GitHub Windows CI does not replace a real interactive Windows console
+test.** The manual Windows real-console smoke is separate evidence. Neither
+the parser pass nor that smoke certifies every ConPTY harness or console host.
 
 The POSIX harness chooses `/dev/tty` when it is a controlling terminal, then
 checks the stdin-TTY fallback after detaching the controlling terminal. It also
@@ -47,9 +63,9 @@ python3 tools/pty/pty-check.py
 
 The PTY tests require Python's Unix `pty`, `fcntl`, and `termios` modules, `stty`,
 and a working R installation. They cannot run on Windows. Interactive Windows
-host testing must be done in Windows Terminal, PowerShell/conhost, or RStudio
-Terminal; until such a host runner is available, those matrix entries remain
-untested rather than inferred from parser tests. A restricted local Windows
+host testing must be done in an attached console, such as Windows Terminal
+with PowerShell/Rterm. The RC1 real-console smoke above has passed; RStudio
+Terminal remains NOT RUN. A restricted local Windows
 sandbox may deny processx child pipes with `Access is denied`; the process
 lifecycle test skips only that exact condition outside CI and is required to
 run in CI.

@@ -1,6 +1,9 @@
 # Migration to 1.0
 
-This note records the compatibility position for the 0.9 development series.
+This note records the pre-1.0 changes included in the release candidate.
+`v1.0.0-rc1` points to `1846527d3968cdd12fa9900bbe80a9f2a89a1a3e`, whose
+DESCRIPTION intentionally still says `Version: 0.9.0.9000`; final 1.0 has
+not shipped.
 Only the experimental functions and argument listed under "Renamed functions
 and arguments" were renamed; no exported symbol is marked deprecated. The 1.0
 release plan is to keep the documented stable API listed in
@@ -24,11 +27,11 @@ this is historical guidance, not a new 1.0 change.
 These experimental APIs were added in the 0.9 series and are renamed before
 1.0 without compatibility aliases:
 
-| Old (0.9 development) | New | First version |
+| Old (0.9 development) | New | Included in |
 |---|---|---|
-| `snapshot_json(x, ...)` | `screen_snapshot_json(x, ...)` | 1.0.0 |
-| `inspect_json(x, ...)` | `widget_snapshot_json(x, ...)` | 1.0.0 |
-| `db_table_source(con, table, own_connection = TRUE)` | `db_table_source(con, table, owned = TRUE)` | 1.0.0 |
+| `snapshot_json(x, ...)` | `screen_snapshot_json(x, ...)` | v1.0.0-rc1 source (0.9.0.9000) |
+| `inspect_json(x, ...)` | `widget_snapshot_json(x, ...)` | v1.0.0-rc1 source (0.9.0.9000) |
+| `db_table_source(con, table, own_connection = TRUE)` | `db_table_source(con, table, owned = TRUE)` | v1.0.0-rc1 source (0.9.0.9000) |
 
 `widget_snapshot()` and its JSON gain a root `schema_version` field; nested
 nodes are unchanged.
@@ -45,6 +48,12 @@ No call has to change, but these behaviors did:
 
 `widget$on()` additionally accepts `widget$on(type, selector, handler)`, the
 argument order of `on()` and `app$on()`; the existing order keeps working.
+
+Worker functions now serialize referenced lexical bindings rather than the
+whole enclosing environment. Simple captures and nested/recursive helpers
+are preserved. Active bindings and dynamic lookup are rejected before spawn;
+resolve those values in the caller and pass them through `args`. Explicit
+large values still serialize. See [Background work](workers.md).
 
 ## Before upgrading
 

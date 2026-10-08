@@ -1,3 +1,5 @@
+worker_ci_snapshot()
+
 test_that("inline workers deliver results through callbacks and events", {
   got <- list()
   status <- label("", id = "status")

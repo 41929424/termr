@@ -5,6 +5,7 @@ test_that("example list includes the showcases", {
 test_that("data-explorer filters, sorts and shows details", {
   skip_on_cran()
   pilot <- test_app(load_example("data-explorer"), 120, 36)
+  on.exit(pilot$stop(), add = TRUE)
   pilot$step()
   text <- paste(pilot$screen_text(), collapse = "\n")
   expect_match(text, "Order explorer")
@@ -42,6 +43,7 @@ test_that("data-explorer filters, sorts and shows details", {
 test_that("task-runner runs, reports progress and fails gracefully", {
   skip_on_cran()
   pilot <- test_app(load_example("task-runner"), 100, 30)
+  on.exit(pilot$stop(), add = TRUE)
   pilot$step()
   expect_match(paste(pilot$screen_text(), collapse = "\n"), "Choose a task")
   # Select the "Generated progress" task and run it.
@@ -76,6 +78,7 @@ test_that("task-runner runs, reports progress and fails gracefully", {
 
 test_that("terminal-dashboard updates on a timer and cycles themes", {
   pilot <- test_app(load_example("terminal-dashboard"), 110, 36)
+  on.exit(pilot$stop(), add = TRUE)
   pilot$advance(5)
   expect_match(pilot$query_one("#rps")$value, "^[0-9]+$")
   expect_gt(length(pilot$query_one("#rps-spark")$data), 5)
@@ -95,12 +98,14 @@ test_that("terminal-dashboard updates on a timer and cycles themes", {
 
 test_that("the dashboard runs without colour", {
   pilot <- test_app(load_example("terminal-dashboard"), 110, 36, color_mode = "none")
+  on.exit(pilot$stop(), add = TRUE)
   pilot$advance(2)
   expect_match(paste(pilot$screen_text(), collapse = "\n"), "Service dashboard")
 })
 
 test_that("editor edits, undoes, searches and reports the position", {
   pilot <- test_app(load_example("editor"), 80, 24)
+  on.exit(pilot$stop(), add = TRUE)
   pilot$step()
   ed <- pilot$query_one("#editor")
   expect_true(ed$focused)
@@ -125,6 +130,7 @@ test_that("editor edits, undoes, searches and reports the position", {
 
 test_that("accessibility-demo cycles themes and works without colour", {
   pilot <- test_app(load_example("accessibility-demo"), 90, 30)
+  on.exit(pilot$stop(), add = TRUE)
   expect_match(pilot$query_one("#theme")$text, "default")
   pilot$press("t")
   expect_identical(pilot$app$theme$name, "dark")
@@ -134,6 +140,7 @@ test_that("accessibility-demo cycles themes and works without colour", {
   pilot$press("m")
   expect_true(motion_reduced(pilot$app))
   mono <- test_app(load_example("accessibility-demo"), 90, 30, color_mode = "none")
+  on.exit(mono$stop(), add = TRUE)
   expect_match(paste(mono$screen_text(), collapse = "\n"), "Accessibility preview")
   mono$press("q")
   expect_true(mono$exited)

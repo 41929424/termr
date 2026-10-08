@@ -1,6 +1,8 @@
 # API stability
 
-termr is in 0.9 development, before its first 1.0 release. This page defines
+termr is in the 1.0 release-candidate phase; final 1.0 has not shipped.
+The immutable `v1.0.0-rc1` tag intentionally retains package version
+`0.9.0.9000`. This page defines
 which parts of the package are intended for application authors, which remain
 experimental, and which are implementation details. The [API inventory](api-inventory.md)
 lists every current export, its implementation and its Rd topic.

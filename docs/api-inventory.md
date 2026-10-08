@@ -230,7 +230,7 @@ There are many additional non-exported parsing, layout, painting, ANSI, validati
 ## `termr:::` references
 
 - In `tests/`, `inst/examples/`, `R/`, and internal helper code: **0** occurrences of `termr:::`.
-- In user documentation: **1** occurrence, in [docs/extensions.md](extensions.md#compatibility-and-testing), which tells extension authors that triple-colon access is internal.
+- In user documentation outside this inventory: **5** explanatory mentions in [Extensions](extensions.md#external-usage-tests), [API stability](stability.md) and [migration notes](migration-to-1.0.md). These describe internal access; they are not calls in runnable examples.
 
 ## Similar names, aliases, and overlaps
 

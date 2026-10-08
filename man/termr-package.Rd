@@ -4,19 +4,25 @@
 \name{termr-package}
 \alias{termr}
 \alias{termr-package}
-\title{termr: a modern reactive terminal UI framework for R}
+\title{termr: modern reactive terminal applications for R}
 \description{
-termr builds interactive terminal applications from a tree of widgets.
-The pipeline is:
+Build modern terminal applications with first-class support for data
+workflows: composable widgets and layouts, reactive state, events,
+keyboard and mouse input, themes, and background R workers.
 }
 \details{
-widget tree -> reactive state -> events -> layout -> virtual screen ->
-screen diff -> ANSI patch -> terminal.
+A virtual framebuffer and incremental rendering send changed cells to the
+terminal. \code{\link[=test_app]{test_app()}} drives the same event loop and renderer headlessly.
+\code{\link[=data_table]{data_table()}} and \code{\link[=data_browser]{data_browser()}} support data inspection; \code{\link[=table_source]{table_source()}}
+adds lazy paging. Optional DBI integrations provide SQL and database
+workflows, and \code{\link[=render_text]{render_text()}}, \code{\link[=render_html]{render_html()}} and related helpers export
+static output without a terminal.
 
 Start with \code{\link[=app]{app()}}, the widget constructors (\code{\link[=vertical]{vertical()}}, \code{\link[=horizontal]{horizontal()}},
-\code{\link[=label]{label()}}, \code{\link[=button]{button()}}, \code{\link[=input]{input()}}) and \code{\link[=run]{run()}}. Custom widgets are
-created with \code{\link[=widget]{widget()}} and \code{\link[=reactive]{reactive()}}. Applications are tested
-headlessly with \code{\link[=test_app]{test_app()}}.
+\code{\link[=label]{label()}}, \code{\link[=button]{button()}}, \code{\link[=input]{input()}}) and \code{\link[=run]{run()}}. Advanced applications can use
+\code{\link[=signal]{signal()}}, \code{\link[=run_worker]{run_worker()}}, \code{\link[=sql_editor]{sql_editor()}} and \code{\link[=db_explorer]{db_explorer()}}. These APIs,
+lazy sources, static export and custom extensions remain experimental;
+see the repository's API stability guide for the complete classification.
 }
 \author{
 \strong{Maintainer}: termr authors \email{akimm7926@gmail.com}

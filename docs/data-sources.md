@@ -6,8 +6,9 @@ large to keep in an R data frame, it also accepts an experimental
 to a viewport without building the full result in memory. It is synchronous,
 and the row count must be known.
 
-The source API remains experimental during 0.x and may change before 1.0. It
-has no additional runtime dependencies; see the [stability policy](stability.md).
+The source API remains experimental in the 1.0 release candidate and under
+the [API stability policy](stability.md). The source protocol itself adds no
+runtime dependency; its database adapters use optional DBI/RSQLite packages.
 
 ## Custom source
 

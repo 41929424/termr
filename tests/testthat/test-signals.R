@@ -171,6 +171,7 @@ test_that("labels and buttons bound to signals re-render", {
   btn <- button("Add", id = "add", on_press = function() count(count() + 1))
   a <- app(vertical(lbl, btn))
   pilot <- test_app(a, 30, 4)
+  on.exit(pilot$stop(), add = TRUE)
   expect_match(pilot$screen_text()[[1]], "Double: 0")
   pilot$press("tab")
   pilot$press("enter")
@@ -194,6 +195,7 @@ test_that("handlers write several signals in one batch", {
   })
   a_app <- app(vertical(lbl, btn))
   pilot <- test_app(a_app, 20, 4)
+  on.exit(pilot$stop(), add = TRUE)
   before <- renders
   pilot$press("tab", "enter")
   expect_identical(renders - before, 1L)
@@ -210,6 +212,7 @@ test_that("bindings end when the widget is removed", {
   host <- vertical(lbl)
   a <- app(host)
   pilot <- test_app(a, 20, 3)
+  on.exit(pilot$stop(), add = TRUE)
   x("two")
   expect_identical(runs, 2L)
   lbl$remove()

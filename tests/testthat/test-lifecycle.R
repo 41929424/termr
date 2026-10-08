@@ -135,6 +135,7 @@ test_that("the event-loop guard ignores queued lifecycle events but stops real l
   big <- app(vertical(lapply(1:60, function(i) label(paste("row", i)))))
   big$.__enclos_env__$private$max_events_per_tick <- 20L
   expect_no_warning(pilot <- test_app(big))
+  on.exit(pilot$stop(), add = TRUE)
   pilot$stop()
 
   looping <- app(
