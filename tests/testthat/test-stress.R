@@ -44,10 +44,13 @@ well_formed_ansi <- function(output) {
 
 test_that("resizing through extreme sizes never breaks the UI", {
   sizes <- list(c(1, 1), c(2, 2), c(5, 3), c(10, 5), c(40, 10), c(80, 24), c(120, 40), c(200, 60), c(300, 3), c(3, 80))
+  pilots <- list()
+  on.exit(lapply(pilots, function(pilot) pilot$stop()), add = TRUE)
   for (seed in 1:4) {
     set.seed(seed)
     a <- app(stress_ui())
     pilot <- test_app(a, 80, 24)
+    pilots[[length(pilots) + 1L]] <- pilot
     log <- character()
     for (i in 1:30) {
       size <- if (runif(1) < 0.6) sample(sizes, 1)[[1]] else c(sample(1:150, 1), sample(1:50, 1))
@@ -82,10 +85,13 @@ focus_valid <- function(a) {
 }
 
 test_that("focus is always a valid widget under random tree changes", {
+  pilots <- list()
+  on.exit(lapply(pilots, function(pilot) pilot$stop()), add = TRUE)
   for (seed in 1:5) {
     set.seed(seed)
     a <- app(stress_ui())
     pilot <- test_app(a, 80, 30)
+    pilots[[length(pilots) + 1L]] <- pilot
     n <- 0L
     focusable <- function() Filter(function(w) isTRUE(w$focusable), a$screen$walk())
     pick <- function(xs) if (length(xs)) xs[[sample(length(xs), 1)]] else NULL
@@ -126,6 +132,7 @@ test_that("a focused child scrolls into view and stays valid across resizes", {
   a <- app(vertical(scroll_view(vertical(lapply(1:30, function(i) button(paste("B", i), id = paste0("b", i)))),
                                 id = "sv"), label("footer")))
   pilot <- test_app(a, 30, 12)
+  on.exit(pilot$stop(), add = TRUE)
   sv <- a$query_one("#sv")
   for (i in 1:12) pilot$press("tab")
   b <- a$focused
