@@ -4,17 +4,15 @@ Version: 0.9.0.9000
 Authors@R:
     person("termr", "authors", email = "akimm7926@gmail.com",
            role = c("aut", "cre"))
-Description: Build interactive terminal applications from widgets, layouts,
-    reactive state, keyboard events, focus management and key bindings.
-    Screens are rendered into a virtual framebuffer and only the cells that
-    changed are sent to the terminal as ANSI escape sequences, so
-    applications update without flicker. A headless driver makes every part
-    of an application testable without a real terminal. Includes a
-    virtualised data table with lazy table sources, a data frame and database
-    browser, a multi-line text editor,
-    split panes, a small reactive graph, dialogs, stylesheets, themes
-    (including high contrast and monochrome), mouse and bracketed-paste
-    support and background workers for data-oriented applications.
+Description: Build modern reactive terminal applications for data workflows
+    in R using composable widgets, layouts, events, focus management and
+    themes. A virtual framebuffer and incremental rendering update changed
+    cells, while a headless driver supports deterministic application tests.
+    Includes virtualised data tables, lazy table sources, data inspection,
+    SQL editing and background R workers with progress and streamed output.
+    Optional database integrations and static text, Markdown, HTML, SVG and
+    JSON exports support analytical tools and reports without requiring an
+    interactive terminal for static output.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

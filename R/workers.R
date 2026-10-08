@@ -561,12 +561,15 @@ Worker <- R6::R6Class(
 #' by the function are captured by value in a small environment; unrelated
 #' bindings in the enclosing environment are omitted. For example, a function
 #' using a local `scalar` binding works without serializing other locals.
+#' Referenced nested and recursive helper functions are captured too.
 #' Dynamic lexical lookup (`get()`, `eval()` or `parent.frame()`) and active
 #' bindings are rejected; pass those values explicitly through `args`. Prefer
 #' `args` for large data and list required packages in `packages`. Inside the function,
 #' `termr_progress(value, message)` reports progress on a channel of its
 #' own, so anything the function prints to stdout or stderr is free for
 #' `on_stdout` / `on_stderr` (`message()` goes to stderr).
+#' The child receives the parent's library search paths, and `R_TESTS` is
+#' cleared so a check-session startup hook cannot rerun the test suite.
 #'
 #' `run_process(command, args)` starts a program *without a shell*: the
 #' command and its arguments are separate, so nothing is interpolated or

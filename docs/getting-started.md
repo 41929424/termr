@@ -1,5 +1,10 @@
 # Getting started
 
+termr builds reactive terminal applications around R workflows. This tutorial
+starts with a form; the same app, layout and event model supports data
+explorers and dashboards. See the [README installation instructions](../README.md#installation)
+for GitHub, RC1 and local-checkout installation.
+
 ## Your first app
 
 Save this as `hello.R` and run `Rscript hello.R` in a terminal:
@@ -26,7 +31,8 @@ app(
 * `app()` takes widgets, event handlers (`on()`) and key bindings
   (`bind()`).
 * `run()` takes over the terminal until the app exits (here: Escape or
-  Ctrl+C) and always restores it.
+  Ctrl+C). Normal exit, handled errors and interrupts run terminal cleanup;
+  forced process termination cannot guarantee restoration.
 * Tab and Shift+Tab move the focus; Enter or Space press the focused
   button; clicks work too.
 
@@ -71,5 +77,8 @@ R cannot assign into the result of a function call
   [styling](styling.md)
 * [Custom widgets and reactive state](custom-widgets.md)
 * [Data tools](data.md): `data_table()`, `browse_data()`, metrics
+* [Lazy table sources](data-sources.md), [SQL](sql.md) and
+  [database explorer](database-explorer.md) for optional database workflows
 * [Screens, workers, animation, developer tools](advanced.md)
 * [Testing](testing.md)
+* [Platform validation](platform-testing.md) and [API stability](stability.md)

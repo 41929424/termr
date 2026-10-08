@@ -128,5 +128,8 @@ are needed.
 
 The highlighter is a tolerant tokenizer, not a SQL parser. Execution targets
 the selected text or entire buffer; it does not infer the statement under the
-cursor. Lazy query sources require a row count and fetch pages synchronously;
-there is no schema browser, autocomplete, query builder, or async query pool.
+cursor. Lazy query sources require a row count and fetch pages synchronously.
+The editor has no autocomplete, query builder or async query pool. For
+portable database metadata and object browsing, use the composed
+[database explorer](database-explorer.md); it does not provide vendor-specific
+schema introspection for arbitrary DBI drivers.

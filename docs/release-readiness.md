@@ -1,10 +1,43 @@
-# 1.0 release readiness audit
+# 1.0 release readiness
+
+## RC1 status (2026-10-08)
+
+The immutable tag `v1.0.0-rc1` points to
+`1846527d3968cdd12fa9900bbe80a9f2a89a1a3e`; its DESCRIPTION intentionally
+retains package version `0.9.0.9000`. Final 1.0 has not shipped. The validated
+source and post-RC documentation changes must be distinguished when reviewing
+new validation results.
+
+| Gate | Result | Evidence / limitation |
+|---|---|---|
+| Full R CMD check matrix | PASS | Workflow [37758703750](https://github.com/41929424/termr/actions/runs/37758703750): Ubuntu release/oldrel-1/4.1/devel, macOS release, Windows release; all 0 ERROR / WARNING / NOTE. Extended suites passed too. |
+| SQL integration | PASS | DBI and RSQLite installed; conditional integration tests ran. |
+| Ubuntu/macOS PTY | PASS | Automated terminal mechanics and restoration; not manual emulator certification. |
+| Windows input regressions | PASS | Parser, PowerShell syntax and shared input/boundary behavior. |
+| Windows real interactive console | PASS (manual report) | RC smoke, including the native-crash check; host/version details not recorded here. |
+| Linux through real `ssh -t` | PASS (manual report) | Basic real-terminal RC smoke; not all clients, servers or disconnect/clipboard cases. |
+| macOS real terminal, tmux, screen, RStudio Terminal | NOT RUN | No manual validation report. |
+| Worker payload regression | PASS | Historical failing jobs were about 104 MB. Synthetic uncompressed RDS fell from about 52.63 MB to 173.7 KB; largest logged full-suite worker job was 31,980 bytes. Workers reached `result_written`. |
+
+**FINAL 1.0 / CRAN BLOCKER:** replace the intentionally temporary `Authors@R`
+maintainer identity with explicitly approved real metadata. Do not invent it.
+Final release preparation also requires an explicit DESCRIPTION version bump;
+RC1's existing tag and source version must remain immutable. Remaining manual
+host checks are listed in [Platform confidence](platform-testing.md).
+
+## Archived audit (2026-10-07)
+
+The report below preserves evidence from the earlier tree and host. Its test
+counts, local NOTEs, incomplete manual checklist and ConPTY crash investigation
+are historical, not the current RC1 gate status. The later Windows manual
+smoke passed; it does not by itself identify the cause of the earlier ConPTY
+harness crash or certify every harness/host combination.
 
 Audit date: 2026-10-07 (RC preparation re-run the same day at `10e7c48`), on the 0.9 development tree (`0.9.0.9000`). Host:
 Windows 11 x64, R 4.5.2, testthat 3.3.2, DBI 1.3.0, RSQLite 3.53.3, jsonlite
 2.0.0, knitr 1.51; no pandoc, no Linux/macOS host, no SSH host.
 
-## Gate results
+### Gate results
 
 | Gate | Result | Evidence / limitation |
 |---|---|---|
@@ -20,7 +53,7 @@ Windows 11 x64, R 4.5.2, testthat 3.3.2, DBI 1.3.0, RSQLite 3.53.3, jsonlite
 | SSH, tmux, RStudio Terminal | **NOT TESTED** | No host available. |
 | Benchmarks | **PASS** | Structural counters (repainted cells, rectangles) equal the checked-in run. A controlled A/B against the pre-audit commit shows no regression (`datatable-1M-cursor` 0.96, `signals-1000` 0.94). Lazy DB query source over 1M rows: 100 rows fetched for the first screen, 300 rows in 3 fetches after jumping to row 500,000. |
 
-## Defects found and fixed in this audit
+### Defects found and fixed in this audit
 
 See NEWS for the user-facing list. In short: `db_table_source()` broken on
 current RSQLite; per-column source fetches; explorer filter and disconnected
@@ -31,7 +64,7 @@ password values in logs, inspection and clipboards; HTML export column shift;
 a spurious event-loop warning for large trees; `widget$on()` argument order;
 an empty README.
 
-## RC preparation: Windows ConPTY crash
+### RC preparation: Windows ConPTY crash
 
 The `gate-data-explorer` "flake" from the audit is a native crash of the R
 process (exit status 0xC0000005, access violation), not a harness race.
@@ -62,7 +95,7 @@ with keys or mouse mode. Next step: reproduce by hand in Windows Terminal
 (press F1 / Escape repeatedly) and capture a dump (`procdump -e -ma` on
 `Rterm.exe`, or WER LocalDumps) to identify the module.
 
-## Manual validation checklist
+### Manual validation checklist
 
 For each host: start `run_example("data-explorer")` and
 `run_example("database-explorer")`; type and use Tab / Enter; resize the
@@ -78,7 +111,7 @@ Ctrl+C; check that the prompt, cursor and echo are normal afterwards.
 - [ ] tmux (and screen) on Linux
 - [ ] RStudio Terminal tab (desktop and Server)
 
-## Open items
+### Open items
 
 Tracked in the audit report; the ones that matter for 1.0 are the CRAN
 maintainer field, Linux/macOS/SSH/RStudio manual runs, and the decisions on

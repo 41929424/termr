@@ -1,4 +1,81 @@
-# termr 0.9.0 (development)
+# termr 1.0.0 (release candidate)
+
+The immutable tag `v1.0.0-rc1` points to
+`1846527d3968cdd12fa9900bbe80a9f2a89a1a3e`. Its DESCRIPTION intentionally
+retains `Version: 0.9.0.9000`; final 1.0 has not shipped. This section
+summarizes the pre-1.0 work included in that source. Stability classifications
+are defined in [API stability](docs/stability.md).
+
+## Highlights
+
+* Compose modern reactive terminal applications around R data workflows,
+  with widgets, layouts, events, themes and deterministic headless testing.
+* Inspect data through virtualized tables, lazy sources, SQL editing and
+  database browsing, with optional DBI/RSQLite integrations.
+* Render incremental terminal frames or export static text, Markdown, HTML,
+  SVG and JSON for reports. Advanced subsystems remain experimental.
+
+## Data workflows
+
+* Lazy `table_source()` pages feed DataTable's bounded viewport cache.
+  SQLite tables and views support delegated sorting/filtering; read-only
+  `db_query_source()` adds bounded query-result paging and driver callbacks.
+* `sql_editor()` keeps materialized query results by default; lazy mode is
+  opt-in. `db_explorer()` uses lazy SQLite previews and query results,
+  portable metadata and an in-memory history. Database calls are synchronous.
+* Added `status_bar()`, `property_grid()`, `record_view()`, `data_profile()`,
+  and `json_view()` for reactive status, record inspection, vector profiling,
+  and paged R-object trees. `record_view()` reuses the property-grid
+  renderer; `json_view()` reuses lazy TreeView nodes.
+* Added the `data-workbench` composition example. These workflow widgets add
+  no mandatory runtime dependency; optional JSON text parsing uses `jsonlite`
+  from Suggests.
+
+## Terminal and rendering
+
+* Rectangular dirty regions and paint-only invalidation avoid unnecessary
+  layout and full-screen painting. Grapheme-aware rendering preserves
+  wide characters, emoji and combining sequences.
+* Windows mouse DWORDs use exact unsigned representations and arithmetic
+  wheel-delta extraction, including negative wheel values.
+* Documented the existing interactive SSH/PTY architecture, clipboard boundary,
+  multiplexer limitations, and manual SSH smoke checklist in `docs/ssh.md`.
+* Capability detection now leaves synchronized output off for generic xterm and
+  multiplexer TERM values, treats `vt100` as monochrome, and avoids enabling
+  SGR mouse or bracketed paste for legacy Linux/VT100 terminals.
+
+## Reactivity and background work
+
+* Signals, lazy computed values and watchers connect application state to
+  reactive widget values; batching groups updates and disposal ends bindings.
+* Background R workers and shell-free subprocesses stream output and progress,
+  with timeouts, cancellation, process-tree cleanup and bootstrap diagnostics.
+* Worker functions now capture only referenced lexical bindings by value.
+  Unrelated enclosing state no longer produces giant payloads for trivial
+  jobs. Simple scalar captures and nested/recursive helpers are preserved;
+  active bindings and dynamic lexical lookup are rejected before spawn.
+  Explicit large values and `args` still serialize. The regression passed
+  on Linux, macOS and Windows.
+
+## Testing and portability
+
+* Full CI [37758703750](https://github.com/41929424/termr/actions/runs/37758703750)
+  passed on the RC1 source: Ubuntu release, oldrel-1, R 4.1 and devel;
+  macOS/Windows release; SQL integration; Linux/macOS PTY; Windows input.
+  All six R CMD check jobs reported 0 errors, 0 warnings and 0 notes.
+* Windows real interactive console and Linux through real `ssh -t` smoke
+  were manually reported PASS. macOS real terminal, tmux, screen and RStudio
+  Terminal remain NOT RUN. PTY CI is separate from manual console validation.
+
+## Static export
+
+* Added terminal-independent text, Markdown, styled HTML and SVG rendering
+  from the virtual screen buffer, plus deterministic screen and widget-tree
+  snapshots.
+* Added optional JSON serialization (`jsonlite`), explicit knitr/Quarto
+  output (`knitr`), and a single `write_rendered()` convenience function.
+* Widget-tree snapshots omit arbitrary state and field values. Static exports
+  are snapshots; they do not run timers, workers, or an app event loop.
 
 ## API changes before 1.0
 
@@ -52,34 +129,6 @@
   start-up; the guard counts events added during a tick.
 * `db_explorer()`: the object filter is case-insensitive as documented, and
   expanding a group after the connection closed no longer errors.
-
-## Core workflow widgets
-
-* Added `status_bar()`, `property_grid()`, `record_view()`, `data_profile()`,
-  and `json_view()` for reactive status, record inspection, vector profiling,
-  and paged R-object trees. `record_view()` reuses the property-grid
-  renderer; `json_view()` reuses lazy TreeView nodes.
-* Added the `data-workbench` composition example. No mandatory runtime
-  dependency was added; optional JSON text parsing uses `jsonlite` from
-  Suggests.
-
-## SSH and terminal capabilities
-
-* Documented the existing interactive SSH/PTY architecture, clipboard boundary,
-  multiplexer limitations, and manual SSH smoke checklist in `docs/ssh.md`.
-* Capability detection now leaves synchronized output off for generic xterm and
-  multiplexer TERM values, treats `vt100` as monochrome, and avoids enabling
-  SGR mouse or bracketed paste for legacy Linux/VT100 terminals.
-
-## Static exports
-
-* Added terminal-independent text, Markdown, styled HTML and SVG rendering
-  from the virtual screen buffer, plus deterministic screen and widget-tree
-  snapshots.
-* Added optional JSON serialization (`jsonlite`), explicit knitr/Quarto
-  output (`knitr`), and a single `write_rendered()` convenience function.
-* Widget-tree snapshots omit arbitrary state and field values. Static exports
-  are snapshots; they do not run timers, workers, or an app event loop.
 
 # termr 0.7.0 (development)
 

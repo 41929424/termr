@@ -3,131 +3,168 @@
 > Modern reactive terminal applications for R, with first-class support for
 > data workflows.
 
-termr builds interactive terminal applications from widgets, layouts,
-reactive state, keyboard and mouse events, stylesheets and themes. You never
-write ANSI escape sequences: every frame is painted into a virtual screen and
-only the cells that changed are sent to the terminal. A headless driver runs
-the same event loop and renderer without a terminal, so whole applications
-can be tested with testthat.
+![termr data explorer showing a virtualized table, metrics and row details](docs/images/data-explorer.png)
+
+Build modern terminal applications with R: data explorers, dashboards,
+database browsers, SQL workspaces and internal analytical tools. termr combines
+widgets, layouts, events, reactive state and themes in a framework that can
+be tested without an interactive terminal.
+
+R is already excellent at data, statistics and machine learning. termr adds
+a terminal application layer around those workflows. A virtual framebuffer
+and incremental rendering send changed cells to the terminal; application
+code works with widgets and events instead of ANSI escape sequences.
+
+## Quick start
+
+Run this in R started inside a real terminal:
 
 ```r
 library(termr)
 
-rows <- signal(nrow(mtcars))                   # reactive state
-
-app(
+selected <- signal(0L)
+ui <- app(
   vertical(
-    metric("Rows", function() rows()),         # re-renders when `rows` changes
-    data_table(mtcars, id = "data", zebra = TRUE, header_sort = TRUE),
+    horizontal(
+      metric("Rows", nrow(mtcars)),
+      metric("Selected row", function() selected())
+    ),
+    data_table(mtcars, id = "cars", zebra = TRUE, header_sort = TRUE),
     button("Quit", on_press = function(event, app) app$exit())
   ),
-  on("datatable.row_selected", "#data", function(event, app) {
-    app$notify(paste("Selected:", rownames(mtcars)[event$data$row]))
-  })
-) |> run()
+  on("datatable.row_selected", "#cars", function(event, app) {
+    selected(event$data$row)
+  }),
+  bind("q", "quit")
+)
+run(ui)
 ```
 
-Or browse a data frame at once: `browse_data(your_data)`.
+Use the arrow keys to move through rows, Tab to move focus, F1 for help,
+and the Quit button or `q` to exit. `signal()` is part of the experimental
+reactive graph; core app, layout, event and in-memory table APIs are intended
+to be stable. To inspect a data frame directly, call `browse_data(mtcars)`.
 
-## Installation
+## Why termr
 
-```r
-remotes::install_local("path/to/termr")   # from a checkout
-```
-
-termr needs R >= 4.1. Its runtime dependencies are R6 and processx; no
-compiler is needed. DBI, RSQLite, jsonlite and knitr are optional and only
-needed for database, JSON and knitr features.
-
-## Where it runs
-
-Apps need a real terminal. Run them with `Rscript app.R`, or from an
-interactive R session started in a terminal:
-
-* **Linux and macOS terminals**, including SSH sessions started with
-  `ssh -t` ([SSH guide](docs/ssh.md)).
-* **Windows Terminal and the Windows console**. Input goes through a small
-  PowerShell helper, so starting an app takes about a second.
-* **RStudio's Terminal tab** is a regular shell, so `Rscript app.R` is
-  expected to work there, but it is not covered by tests yet. The RStudio and
-  Positron **consoles** are not terminals; `run()` stops with an explanation
-  instead of drawing.
-
-Without a terminal (knitr, CI, scripts), render a widget tree to text,
-Markdown, HTML, SVG or JSON with `render_text()`, `render_html()` and
-friends ([export guide](docs/export.md)). See the
-[platform matrix](docs/platform-testing.md) for what is tested where.
-
-## What is included
-
-* **Widgets**: labels, buttons, inputs, checkboxes, radio sets, dropdowns,
-  option lists, a multi-line editor with syntax highlighting, tree views,
-  tabs, split panes, scroll views, panels, Markdown, progress, sparklines,
-  metrics, logs, process output, status bars, property grids and JSON trees
-  ([widgets](docs/widgets.md)).
-* **Layout**: vertical, horizontal and grid layouts, scrolling, split panes,
-  custom layouts ([layout](docs/layout.md)).
-* **Reactivity**: reactive widget fields and a small signal graph
-  (`signal()`, `computed()`, `watch()`, `batch()`)
-  ([reactivity](docs/reactivity.md)).
-* **Input**: keyboard, mouse (click, drag, wheel, hover), bracketed paste,
-  clipboard writes via OSC 52 ([terminal](docs/terminal.md)).
-* **Styling**: inline styles, CSS-like stylesheets, themes including
-  high-contrast and monochrome (`NO_COLOR`), reduced motion
-  ([styling](docs/styling.md)).
-* **Screens**: modal dialogs, notifications, a command palette (Ctrl+P) and
-  generated help (F1).
-* **Background work**: R functions in worker processes and external programs
-  without a shell, with streamed output, progress, timeouts and cancellation
-  ([workers](docs/workers.md)).
+- **Compose applications:** build a widget tree, handle typed events and
+  commands, and bind displayed values to reactive state.
+- **Keep data work visible:** inspect rows and records, show metrics and
+  progress, and run long computations in background R workers.
+- **Test the interface:** drive the event loop and renderer headlessly with
+  deterministic input and time, including modal and focus behavior.
 
 ## Data workflows
 
-`data_table()` is virtualised: only visible rows are formatted, so it handles
-millions of rows, with sorting, filtering, search, resizable, hidden and
-frozen columns, and optional editing. Lazy [table sources](docs/data-sources.md)
-let it page through data it never loads whole, including SQLite tables and
-query results. `sql_editor()`, `db_connection()` and `db_explorer()` add SQL
-editing and database browsing through DBI ([SQL](docs/sql.md),
-[database explorer](docs/database-explorer.md)).
+`data_table()` formats and paints the visible viewport. In-memory tables
+support sorting, filtering, search, selection, and resizable, hidden and
+frozen columns. [Lazy table sources](docs/data-sources.md) fetch bounded pages
+without loading a whole dataset into an R data frame. SQLite table and query
+adapters are included; other DBI drivers can provide paging callbacks.
+
+`sql_editor()`, `db_connection()` and `db_explorer()` compose SQL editing,
+database metadata and result browsing through optional DBI packages. Query
+execution and page fetches are synchronous; background workers are available
+for separate analytical jobs. See [data tools](docs/data.md),
+[SQL workflows](docs/sql.md) and [database explorer](docs/database-explorer.md).
 
 ```r
-run_example()                     # list the bundled examples
+run_example()                  # list bundled examples
 run_example("data-explorer")
+run_example("data-workbench")
 ```
+
+## Framework capabilities
+
+Compose forms and dashboards with controls, tabs, split panes, scroll views,
+trees, Markdown, metrics and sparklines. Add generated help, modal dialogs,
+notifications and a command palette. Stylesheets and themes include
+monochrome/`NO_COLOR`, high contrast and reduced motion.
+
+![termr widget showcase with tabs, metrics, progress and a sparkline](docs/images/widget-showcase.png)
+
+This screenshot comes from the RC1 source tree and displays its package
+version, `0.9.0.9000`.
+
+Background workers and subprocesses stream output and progress with timeout,
+cancellation and process cleanup. Static rendering exports text, Markdown,
+HTML, SVG and JSON for scripts and optional knitr/Quarto output. These are
+screen snapshots; static rendering does not start an app event loop.
+
+## Installation
+
+termr requires R >= 4.1 and is not on CRAN yet. Install from GitHub:
+
+```r
+remotes::install_github("41929424/termr")
+```
+
+To install the immutable release candidate exactly:
+
+```r
+remotes::install_github("41929424/termr", ref = "v1.0.0-rc1")
+```
+
+Or install a local checkout:
+
+```r
+remotes::install_local("path/to/termr")
+```
+
+The `v1.0.0-rc1` tag points to `1846527d3968cdd12fa9900bbe80a9f2a89a1a3e`.
+Its source intentionally retains `Version: 0.9.0.9000`; final 1.0 has not
+shipped. termr uses a small set of R runtime dependencies and keeps DBI,
+RSQLite, jsonlite and knitr optional. termr itself has no compiled source code.
+
+## Where it runs
+
+Interactive apps need a real terminal: use `Rscript app.R` or R started
+inside a terminal. Linux/macOS POSIX terminal mechanics are exercised by PTY
+CI; Windows console input is read through an installed PowerShell helper
+and its parser is tested in Windows CI.
+
+For RC1, Windows real interactive console smoke and Linux through a real
+`ssh -t` session were manually reported PASS. macOS real terminal, tmux,
+screen and RStudio Terminal have not been manually validated. RStudio and
+Positron consoles are not terminal hosts; use their terminal tabs for
+interactive apps. See the [platform matrix](docs/platform-testing.md) and
+[SSH guide](docs/ssh.md) for evidence and limits.
+
+For knitr, CI and other non-TTY contexts, use [static export](docs/export.md).
 
 ## Testing
 
 ```r
-test_that("greets", {
-  pilot <- test_app(my_app(), width = 40, height = 10)
-  pilot$type("Ada")
-  pilot$press("tab", "enter")
-  expect_match(paste(pilot$screen_text(), collapse = "\n"), "Hello, Ada")
-})
+pilot <- test_app(app(label("Ready")), width = 40, height = 3)
+stopifnot(grepl("Ready", paste(pilot$screen_text(), collapse = "\n")))
+pilot$stop()
 ```
 
-`test_app()` drives the real event loop and renderer against a virtual
-terminal with simulated time ([testing](docs/testing.md)).
+`test_app()` uses the real event loop and renderer with simulated input and
+time. [Testing](docs/testing.md) covers keys, mouse, paste, resize, workers
+and snapshots. [Full CI run 37758703750](https://github.com/41929424/termr/actions/runs/37758703750)
+passed on the RC1 commit: Ubuntu release, oldrel-1, R 4.1 and devel; macOS
+and Windows release; SQL integration; Linux/macOS PTY; and Windows input.
+The six R CMD check jobs reported 0 errors, 0 warnings and 0 notes.
 
-## Status
+## API stability
 
-termr is in the 0.9 series, preparing 1.0. Core app, widget, layout, event,
-styling and testing APIs are intended to be stable; the reactive graph,
-workers, text editor, table sources, database support, custom layouts and
-static export are experimental. [API stability](docs/stability.md) lists
-every area and the versioning policy; [NEWS](NEWS.md) records changes.
+termr is in the 1.0 release-candidate phase. Core app/widget construction,
+layout basics, events, commands, styling/themes, in-memory DataTable and
+testing basics are intended to remain compatible through 1.0. The reactive
+graph, workers, editor, lazy sources, database support, static export and
+custom extensions remain experimental. Workflow widgets added late in the
+pre-1.0 cycle also remain experimental. The complete classification is in
+[API stability](docs/stability.md); see [migration notes](docs/migration-to-1.0.md)
+and [NEWS](NEWS.md) for changes.
 
 ## Documentation
 
-[Getting started](docs/getting-started.md) is the place to begin.
-[ARCHITECTURE.md](ARCHITECTURE.md) describes the layers for contributors.
-Other guides live in [docs/](docs/): events, custom widgets, extensions,
-data, workers, export, SSH, performance and testing.
-
-> **R gotcha.** R cannot assign into the result of a function call, so
-> `app$query_one("#name")$value <- ""` is an error. Use
-> `app$query_one("#name")$set(value = "")`, or keep the widget in a variable.
+Start with [Getting started](docs/getting-started.md), then explore
+[widgets](docs/widgets.md), [layouts](docs/layout.md), [events](docs/events.md),
+[reactivity](docs/reactivity.md), [styling](docs/styling.md),
+[workers](docs/workers.md) and [extensions](docs/extensions.md).
+[ARCHITECTURE.md](ARCHITECTURE.md) describes the implementation for contributors.
 
 ## License
 

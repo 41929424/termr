@@ -2,7 +2,7 @@
 
 How termr is built: the layers, the data flowing between them, the main
 decisions and where new features plug in. Written for contributors; it
-describes the code as it is (0.3.0).
+describes the implementation in the 1.0 release-candidate source tree.
 
 ## Layers
 
@@ -73,7 +73,8 @@ writes never leave half a cluster. All segmentation lives in `unicode.R`.
 
 `diff_screen()` produces horizontal runs (wide clusters kept whole, nearby
 runs merged); `patch_to_ansi()` emits cursor moves and SGR changes only.
-Frames use synchronized output (mode 2026). `VirtualTerminal` interprets
+Frames use synchronized output (mode 2026) only when terminal capabilities
+enable it; generic xterm and multiplexer paths leave it off. `VirtualTerminal` interprets
 the output back into a buffer; tests check `apply(old, ansi(diff)) == new`.
 
 ### Frames, layers and dirty regions
@@ -167,6 +168,38 @@ visible rows themselves:
 * **TreeView** flattens expanded nodes into cached lines (rebuilt when any
   node reports a change); lazy loaders run on first expand.
 
+For a `table_source()`, DataTable keeps bounded 100-row chunks and asks for
+all visible columns in one source call per page. Sorting, filtering and
+search delegate to explicit callbacks; unsupported operations never silently
+scan or materialize the whole source. Cache entries invalidate on source
+refresh or view changes. Source fetches are synchronous.
+
+## Reactive graph
+
+`signals.R` implements signals, lazy cached computed values and watchers.
+Reads track dependencies; writes invalidate subscribers. Watchers settle in
+creation order, and `batch()` defers them until the outer batch exits.
+`peek()` and `untracked()` bypass tracking; `dispose()` unlinks a computed or
+watcher. Reactive widget value callbacks bind to this graph and detach when
+the widget is removed. Handler/timer execution uses batching, while widget
+field invalidation still determines layout versus paint work.
+
+## Data and database layers
+
+`table_source()` defines the public paging/capability/lifecycle protocol.
+`db_table_source()` supplies SQLite table/view paging with quoted identifiers,
+bound filters and `LIMIT`/`OFFSET`. `db_query_source()` supplies read-only
+query paging with a SQLite implementation or driver-specific callbacks.
+Counts are known before paging, and may themselves require a database scan.
+
+The optional DBI wrapper records connection ownership: externally supplied
+connections stay open; owned connections disconnect on their owner's cleanup.
+Sources expose explicit close methods, and query sources never own the supplied
+connection. `db_metadata()` supplies portable metadata with SQLite-specific
+view support. `db_explorer()` composes that metadata, lazy previews, SQL
+editing, result tables and in-memory history. SQL execution remains synchronous;
+default editor results are materialized, with lazy result mode as an opt-in.
+
 ## Screens and overlays
 
 `ScreenStack` holds the screens; `push_screen()` saves the focus of the
@@ -189,12 +222,29 @@ theme maps them to ANSI colours.
 
 ## Workers and animation
 
-Workers serialise `fn` and `args` to an RDS file and run
+Workers prepare a minimized function closure before serializing `fn` and
+`args` to an RDS file. `codetools::findGlobals()` identifies referenced bindings;
+local helper functions are copied recursively into minimal environments, with
+unrelated enclosing state omitted and the caller's function unchanged.
+Scalar captures, nested helpers and recursive helpers work. Referenced values
+are captured by value; explicit large objects and `args` still serialize.
+Active bindings and dynamic lexical lookup fail before spawn. Namespace/base
+functions retain their normal namespace semantics.
+
+Workers run
 `inst/helpers/termr-worker.R` with `Rscript --vanilla` via processx;
 progress records (`termr_progress()`) are appended to a separate file and the
 result written to an RDS file, so stdout and stderr stay free for the job's
-output (streamed as events). `run_process()` runs programs without a shell. The app polls workers every tick and turns them into
-`worker.*` events and callbacks. Animations share one 30 fps timer and use
+output (streamed as events). Minimal capture environments are reconnected in
+the child after requested packages and `termr_progress()` are available. The
+child receives the parent's library paths with `R_TESTS` cleared. Bootstrap
+trace files record progress through `result_written`; diagnostics identify
+unexpected exits and timeouts. Pipe draining is bounded per poll, and exit or
+cancellation cleans up process descendants and temporary files. Widget removal
+and app shutdown cancel owned workers.
+
+`run_process()` runs programs without a shell. The app polls workers every
+tick and turns them into `worker.*` events and callbacks. Animations share one 30 fps timer and use
 the app clock, so headless tests are deterministic.
 
 ## Terminal drivers
@@ -204,11 +254,17 @@ the app clock, so headless tests are deterministic.
   line editing, Ctrl+C as a key, mouse on, quick-edit off), enables VT
   output in legacy consoles and restores everything when R creates its
   stop file or disappears.
+  Unsigned DWORD mouse button-state/flag fields are parsed as exact R doubles;
+  word extraction is arithmetic, including signed wheel deltas, and malformed
+  helper records are rejected before event dispatch.
 * All drivers expose `capabilities` (detected once: colours, mouse, bracketed
   paste, OSC 52, ...); the bracketed-paste markers are parsed into a
   `PasteEvent` by `KeyParser` (any fragmentation of the input).
-* **Unix**: `stty raw -echo` on `/dev/tty`, a `cat` reader polled with
-  processx, `KeyParser`, `stty size` polling. Checked by unit tests with a
+* **Unix**: saves `stty` state, selects `/dev/tty` or a TTY stdin fallback
+  through `/dev/stdin`, then enables `stty raw -echo`. A `cat` reader is polled
+  with processx; `KeyParser` handles byte fragmentation and `stty size` polls
+  resizes. No controlling terminal and no TTY stdin produce a clear error.
+  Checked by unit tests with a
   fake reader and by `tools/pty/pty-check.py` in CI.
 * **Headless**: input queue, simulated clock, `VirtualTerminal` output.
 
@@ -216,12 +272,28 @@ The terminal is restored on exit, on error (caught, restored, re-raised)
 and on interrupts; `stop()` is idempotent and each step protected. Mouse
 reporting is enabled only while the app runs.
 
+## Static output and headless testing
+
+The headless driver uses an input queue, simulated clock and ANSI interpreter
+with the normal App event loop. `test_app()` exposes a Pilot for input, focus,
+resize and worker tests without a real terminal.
+
+The static path (`export.R`, `testing.R`) lays out and paints one frame
+into a ScreenBuffer without terminal IO or an app event loop. An unattached
+root widget is temporarily wrapped in a Screen, then detached on exit;
+layout assigns regions for the requested size. Text, Markdown, styled HTML and
+SVG use this buffer; optional jsonlite serializes screen/structural snapshots,
+and optional knitr supplies as-is Markdown/HTML for reports. Static rendering
+does not advance timers or start workers. See [static export](docs/export.md)
+and [testing](docs/testing.md).
+
 ## Extension points
 
 | Feature | Where |
 |---------|-------|
-| New layout | `layout_algorithms` entry, or `arrange_children()` / `child_clip()` |
-| New widget | `widget()`, or subclass `Widget` / `ListBase` |
+| New layout | Public `register_layout()` / `unregister_layout()`, or documented widget arrangement methods |
+| New widget | Public `widget()`, or subclass exported `Widget`; `ListBase` is internal |
+| Lazy table backend | Public `table_source()` callbacks; DBI query paging via `db_query_source(adapter = )` |
 | New style property | `style()` + `style_property_parsers` + `css_kinds` |
 | Grapheme rules | `unicode.R` |
 | Dirty-region policy | `dirty_rects()`, `snapshot_changes()` in `dirty.R` |
@@ -229,3 +301,8 @@ reporting is enabled only while the app runs.
 | Terminal features | `terminal_capabilities()` in `capabilities.R` |
 | Reactive graph | `signals.R` (`signal`, `computed`, `watch`) |
 | Accessibility | theme flags `mono` / `strong_focus` in `resolve_style()` and `computed_style()`; `motion_reduced()` |
+
+This contributor table includes internal implementation hooks as well as
+public protocols. External packages should follow [Extensions](docs/extensions.md)
+and the [stability classification](docs/stability.md); direct access to
+registries, parsers or dirty-region helpers is internal.

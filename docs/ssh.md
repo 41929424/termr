@@ -5,9 +5,11 @@ the existing POSIX driver reads terminal input and writes the rendered screen
 through the SSH terminal stream. It does not open an SSH connection or transfer
 R objects to the client.
 
-The repository has Linux and macOS PTY CI, but no real SSH host was available
-for this audit. The manual checklist below remains unverified; PTY results do
-not certify SSH, a particular terminal emulator, or a multiplexer.
+Linux through a real `ssh -t` session was manually reported PASS for RC1 at
+`1846527d3968cdd12fa9900bbe80a9f2a89a1a3e`. Linux and macOS PTY CI separately
+passed terminal-mechanics checks. One successful SSH host does not certify
+all clients, servers or multiplexers; tmux and screen have not been manually
+validated. See the [platform matrix](platform-testing.md) for the full status.
 
 ## Start an interactive app
 
@@ -60,8 +62,8 @@ the app has a controlling terminal while a worker's stdin is not a TTY.
 `run_process()` likewise executes its command on the server without a shell
 and without inheriting the terminal as stdin; the caller supplies one
 argument per vector element. No local Windows paths or client-side executables
-are involved. Worker launch and cleanup over a live SSH session still need
-real-host validation.
+are involved. The reported SSH smoke pass does not separately certify every
+worker, clipboard or disconnect scenario in the extended checklist below.
 
 ## Terminal type and capabilities
 
@@ -136,7 +138,7 @@ after the terminal has disappeared. tmux/screen can keep the remote process
 and its pane alive across a disconnected SSH client; reconnect and reattach to
 inspect that state.
 
-## Coverage and manual smoke test
+## Coverage and extended manual smoke test
 
 The [PTY CI matrix](platform-testing.md) is configured for GitHub-hosted Ubuntu
 and macOS. It covers the terminal mechanics below, but does not simulate SSH
@@ -154,8 +156,9 @@ transport or a particular remote host:
 These checks approximate the PTY layer. They do not replace the manual SSH
 checklist below or add an SSH integration service or network dependency.
 
-Run this checklist on a real remote Linux or macOS machine before claiming
-end-to-end SSH validation:
+Basic Linux SSH smoke has passed for RC1. Use this extended checklist when
+validating another client/server path or the optional workflows below; the
+RC smoke report does not establish that every item was exercised:
 
 ```sh
 ssh -t user@host
