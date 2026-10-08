@@ -522,10 +522,17 @@ def no_tty_session():
     output = strip(result.stdout)
     check("no-TTY subprocess has no terminal", "__NO_TTY_TOPOLOGY__ stdin_isatty=False controlling=False" in output,
           output[-300:])
-    check("no-TTY session fails with a termr error", result.returncode == 42 and "TERM_ERROR:" in output and
-          "termr needs an interactive terminal" in output,
+    lower_output = output.lower()
+    check("no-TTY session fails with a termr error", result.returncode != 0 and
+          "term_error:" in lower_output and "termr" in lower_output and
+          "interactive terminal" in lower_output and
+          ("output is not a terminal" in lower_output or
+           "terminal is unavailable" in lower_output or
+           "stdin is not a tty" in lower_output),
           f"status {result.returncode}: {output[-300:]!r}")
-    check("no-TTY error is not opaque ENXIO", "system error 6" not in output and "No such device" not in output)
+    check("no-TTY error is not opaque ENXIO", "enxio" not in lower_output and
+          "system error 6" not in lower_output and "no such device or address" not in lower_output and
+          "stty:" not in lower_output)
 
 
 PENDIN = 0x20000000

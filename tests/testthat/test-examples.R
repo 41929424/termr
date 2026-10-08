@@ -10,6 +10,7 @@ test_that("all examples are listed", {
 
 test_that("the hello example greets the user", {
   pilot <- test_app(load_example("hello"), 40, 10)
+  on.exit(pilot$stop(), add = TRUE)
   pilot$type("Ada")
   pilot$press("tab", "enter")
   expect_identical(pilot$query_one("#result")$text, "Hello, Ada")
@@ -18,6 +19,7 @@ test_that("the hello example greets the user", {
 
 test_that("the form example greets, clears and quits", {
   pilot <- test_app(load_example("form"), 60, 16)
+  on.exit(pilot$stop(), add = TRUE)
   pilot$type("Ann")
   pilot$press("enter")
   expect_identical(pilot$query_one("#result")$text, "Hello, Ann!")
@@ -30,6 +32,7 @@ test_that("the form example greets, clears and quits", {
 
 test_that("the counter example counts, totals and ticks", {
   pilot <- test_app(load_example("counter"), 70, 14)
+  on.exit(pilot$stop(), add = TRUE)
   pilot$press("up", "up", "b", "tab", "down")
   expect_identical(pilot$query_one("#left")$count, 102L)
   expect_identical(pilot$query_one("#right")$count, 9L)
@@ -42,6 +45,7 @@ test_that("the counter example counts, totals and ticks", {
 
 test_that("the keys example shows key names", {
   pilot <- test_app(load_example("keys"), 60, 10)
+  on.exit(pilot$stop(), add = TRUE)
   pilot$press("ctrl+up")
   expect_match(pilot$query_one("#key")$text, "ctrl+up", fixed = TRUE)
   pilot$press("q")
@@ -50,6 +54,7 @@ test_that("the keys example shows key names", {
 
 test_that("the system monitor updates metrics on a timer", {
   pilot <- test_app(load_example("system-monitor"), 90, 30)
+  on.exit(pilot$stop(), add = TRUE)
   pilot$advance(1.1)
   expect_match(pilot$query_one("#cpu")$computed_style()$border, "round")
   expect_true(is.numeric(pilot$query_one("#cpu")$value))
@@ -61,6 +66,7 @@ test_that("the system monitor updates metrics on a timer", {
 
 test_that("the kitchen sink renders every tab", {
   pilot <- test_app(load_example("kitchen-sink"), 100, 30)
+  on.exit(pilot$stop(), add = TRUE)
   for (i in 1:5) {
     expect_identical(pilot$query_one("#tabs")$active, i)
     pilot$press("ctrl+pagedown")
@@ -78,6 +84,7 @@ test_that("the file tree previews files lazily", {
   writeLines("inner", file.path(dir, "sub", "b.txt"))
   withr::local_envvar(TERMR_ROOT = dir)
   pilot <- test_app(load_example("file-tree"), 80, 20)
+  on.exit(pilot$stop(), add = TRUE)
   pilot$press("down") # "sub" (directories first)
   expect_true(any(grepl("1 entries", pilot$screen_text())))
   pilot$press("down") # a.txt
@@ -87,10 +94,12 @@ test_that("the file tree previews files lazily", {
 test_that("the model monitor and dataframe browser examples build", {
   mm <- load_example("model-monitor")
   pilot <- test_app(mm, 80, 24)
+  on.exit(pilot$stop(), add = TRUE)
   expect_identical(pilot$query_one("#epoch")$value, "0/30")
   pilot$stop()
   db <- load_example("dataframe-browser")
   pilot2 <- test_app(db, 120, 30)
+  on.exit(pilot2$stop(), add = TRUE)
   expect_match(pilot2$screen_text()[[1]], "Fruit sales")
   pilot2$stop()
 })
