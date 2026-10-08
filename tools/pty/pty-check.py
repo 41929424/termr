@@ -24,6 +24,7 @@ import pty
 import re
 import select
 import signal
+import subprocess
 import struct
 import sys
 import termios
@@ -73,35 +74,50 @@ class Session:
         # streams so a previous case's failure cannot reappear in this PTY.
         sys.stdout.flush()
         sys.stderr.flush()
-        self.pid, self.fd = pty.fork()
-        if self.pid == 0:
-            fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-            if tty_mode == "controlling":
+        if tty_mode == "stdin":
+            # Open the slave before fork/setsid. A session leader that merely
+            # inherits this descriptor does not acquire a controlling TTY.
+            master, slave = os.openpty()
+            fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+            try:
+                self.pid = os.fork()
+            except BaseException:
+                os.close(master)
+                os.close(slave)
+                raise
+            if self.pid == 0:
+                os.close(master)
+                os.setsid()
+                for target in (0, 1, 2):
+                    os.dup2(slave, target)
+                if slave > 2:
+                    os.close(slave)
                 try:
                     tty = os.open("/dev/tty", os.O_RDWR)
-                    valid = os.isatty(0) and os.tcgetpgrp(tty) == os.getpgrp()
-                    os.close(tty)
                 except OSError:
-                    valid = False
-                os.write(1, b"__PTY_CTTY_OK__\n" if valid else b"__PTY_CTTY_MISSING__\n")
-            elif tty_mode in ("stdin", "none"):
-                # Detaching a session leader sends SIGHUP. Ignore it only
-                # for this operation, then restore normal child semantics.
-                old_hup = signal.signal(signal.SIGHUP, signal.SIG_IGN)
-                fcntl.ioctl(0, termios.TIOCNOTTY, 0)
-                signal.signal(signal.SIGHUP, old_hup)
-                if tty_mode == "none":
-                    null = os.open(os.devnull, os.O_RDONLY)
-                    os.dup2(null, 0)
-                    os.close(null)
-                    os.write(1, b"__PTY_NO_TTY__\n")
-                else:
-                    try:
-                        tty = os.open("/dev/tty", os.O_RDWR)
-                        os.close(tty)
-                        os.write(1, b"__PTY_STDIN_FALLBACK_INVALID__\n")
-                    except OSError:
-                        os.write(1, b"__PTY_STDIN_ONLY__\n" if os.isatty(0) else b"__PTY_STDIN_NOT_TTY__\n")
+                    tty = None
+                if tty is not None:
+                    os.close(tty)
+                valid = os.isatty(0) and tty is None
+                os.write(1, b"__PTY_STDIN_ONLY__\n" if valid else b"__PTY_STDIN_FALLBACK_INVALID__\n")
+                if not valid:
+                    os._exit(98)
+                os.execvpe(command[0], command, env)
+            self.fd = master
+            os.close(slave)
+        elif tty_mode == "controlling":
+            self.pid, self.fd = pty.fork()
+        else:
+            raise ValueError(f"unsupported PTY mode: {tty_mode}")
+        if self.pid == 0:
+            fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+            try:
+                tty = os.open("/dev/tty", os.O_RDWR)
+                valid = os.isatty(0) and os.tcgetpgrp(tty) == os.getpgrp()
+                os.close(tty)
+            except OSError:
+                valid = False
+            os.write(1, b"__PTY_CTTY_OK__\n" if valid else b"__PTY_CTTY_MISSING__\n")
             os.execvpe(command[0], command, env)
         self.output = ""
         self.status = None
@@ -488,12 +504,27 @@ def degraded_session():
         Session.active.remove(s)
 def no_tty_session():
     script = os.path.join(HERE, "no-tty-app.R")
-    s = Session(script, tty_mode="none")
-    s.wait_for("termr needs an interactive terminal", 10)
-    code = s.wait_exit()
-    output = strip(s.output)
-    check("no-TTY session fails with a termr error", code == 42 and "TERM_ERROR:" in output,
-          f"status {code}: {output[-300:]!r}")
+    # A fresh process session with /dev/null on stdin has no controlling TTY.
+    # Check that topology before exec, without touching a PTY or TIOCNOTTY.
+    preflight = (
+        "import os,sys; "
+        "tty=os.isatty(0); "
+        "\ntry: fd=os.open('/dev/tty',os.O_RDWR)\n"
+        "except OSError: control=False\n"
+        "else: os.close(fd); control=True\n"
+        "print('__NO_TTY_TOPOLOGY__ stdin_isatty=%s controlling=%s' % (tty,control),flush=True)\n"
+        "if tty or control: sys.exit(98)\n"
+        "os.execvp(sys.argv[1],[sys.argv[1],sys.argv[2]])")
+    result = subprocess.run([sys.executable, "-c", preflight, RSCRIPT, script],
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, timeout=10,
+                            start_new_session=True, env=os.environ.copy())
+    output = strip(result.stdout)
+    check("no-TTY subprocess has no terminal", "__NO_TTY_TOPOLOGY__ stdin_isatty=False controlling=False" in output,
+          output[-300:])
+    check("no-TTY session fails with a termr error", result.returncode == 42 and "TERM_ERROR:" in output and
+          "termr needs an interactive terminal" in output,
+          f"status {result.returncode}: {output[-300:]!r}")
     check("no-TTY error is not opaque ENXIO", "system error 6" not in output and "No such device" not in output)
 
 

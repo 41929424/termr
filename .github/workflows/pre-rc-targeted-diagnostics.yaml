@@ -1,0 +1,100 @@
+# Ordered, targeted diagnostics only. No full R CMD check matrix runs here.
+on:
+  workflow_dispatch:
+    inputs:
+      preceding_indices:
+        description: 'Ordered predecessor indices for the worker contamination probe'
+        required: false
+        default: '24-25,38,44,55,59,72'
+  push:
+    branches: ['ci-pre-rc/**']
+
+name: pre-rc-targeted-diagnostics
+permissions: read-all
+
+jobs:
+  macos-pty:
+    name: macOS PTY topology
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: local::.
+      - name: PTY fixture and independent scenarios
+        env:
+          PYTHONUTF8: 1
+          TERM: xterm-256color
+        run: |
+          Rscript tools/pty/test-fixture.R
+          status=0
+          python3 tools/pty/pty-check-ci.py --case stdin_fallback_session || status=1
+          python3 tools/pty/pty-check-ci.py --case no_tty_session || status=1
+          python3 tools/pty/pty-check-ci.py --exclude-case stdin_fallback_session --exclude-case no_tty_session || status=1
+          exit "$status"
+
+  ubuntu-pty:
+    name: Ubuntu PTY topology
+    runs-on: ubuntu-latest
+    needs: macos-pty
+    if: always()
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: local::.
+      - name: PTY fixture and independent scenarios
+        env:
+          PYTHONUTF8: 1
+          TERM: xterm-256color
+        run: |
+          Rscript tools/pty/test-fixture.R
+          status=0
+          python3 tools/pty/pty-check-ci.py --case stdin_fallback_session || status=1
+          python3 tools/pty/pty-check-ci.py --case no_tty_session || status=1
+          python3 tools/pty/pty-check-ci.py --exclude-case stdin_fallback_session --exclude-case no_tty_session || status=1
+          exit "$status"
+
+  contaminated-workers:
+    name: contaminated workers (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: ubuntu-pty
+    if: always()
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      PRECEDING_INDICES: ${{ inputs.preceding_indices || '24-25,38,44,55,59,72' }}
+      NOT_CRAN: true
+      TERMR_WORKER_DIAG_READRDS: '1'
+      TERMR_CI_RESOURCE_SNAPSHOT: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: local::.
+          needs: check
+      - name: Ordered predecessor files plus unskipped worker tests
+        id: plain
+        shell: bash
+        run: |
+          Rscript tools/ci/worker-contamination.R "--indices=$PRECEDING_INDICES"
+      - name: Same selected files inside targeted R CMD check
+        if: always()
+        shell: bash
+        run: |
+          export TERMR_TEST_FILTER="$(Rscript tools/ci/worker-contamination.R "--indices=$PRECEDING_INDICES" --filter)"
+          printf 'Targeted test filter: %s\n' "$TERMR_TEST_FILTER"
+          R CMD build --no-manual --no-build-vignettes .
+          R CMD check --no-manual --no-examples --no-build-vignettes --ignore-vignettes termr_*.tar.gz
