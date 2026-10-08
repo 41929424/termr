@@ -13,11 +13,126 @@
 # stderr stay free for the job's own output (streamed to on_stdout /
 # on_stderr). Nothing from the job's output is ever interpreted as protocol.
 #
-# The function runs in a fresh R session: it must be self-contained. Pass
-# data through `args`, and the packages it needs through `packages`.
+# The function runs in a fresh R session. Lexical bindings referenced by the
+# function are copied into a small environment before serialization; unrelated
+# bindings in the caller's environment are not part of the worker job.
 
-# Diagnostics describe only environment categories, never binding names or
-# values from a user closure. This is used by the targeted worker CI probe.
+worker_binding_env <- function(name, env) {
+  repeat {
+    if (exists(name, envir = env, inherits = FALSE)) return(env)
+    if (identical(env, emptyenv())) return(NULL)
+    env <- parent.env(env)
+  }
+}
+
+worker_dynamic_lookup <- c("get", "get0", "mget", "eval", "evalq", "assign",
+                           "delayedAssign", "parent.frame")
+
+worker_copy_function <- function(fn, state) {
+  source_env <- environment(fn)
+  if (is.null(source_env) || identical(source_env, baseenv()) ||
+      identical(source_env, emptyenv()) || isNamespace(source_env)) return(fn)
+
+  for (i in seq_along(state$originals)) {
+    if (identical(state$originals[[i]], fn)) return(state$copies[[i]])
+  }
+
+  globals <- tryCatch(codetools::findGlobals(fn, merge = FALSE), error = function(e) {
+    stop("Could not inspect worker function globals: ", conditionMessage(e), call. = FALSE)
+  })
+  names <- unique(c(globals$variables, globals$functions))
+  dynamic <- intersect(names, worker_dynamic_lookup)
+  if (length(dynamic)) {
+    stop("Worker functions cannot use dynamic lexical lookup (", paste(dynamic, collapse = ", "),
+         "); pass the required values explicitly through `args`.", call. = FALSE)
+  }
+
+  target_env <- new.env(parent = baseenv())
+  copy <- fn
+  environment(copy) <- target_env
+  index <- length(state$originals) + 1L
+  state$originals[[index]] <- fn
+  state$copies[[index]] <- copy
+  state$environments[[index]] <- target_env
+
+  for (name in names) {
+    binding_env <- worker_binding_env(name, source_env)
+    if (is.null(binding_env)) next
+    if (bindingIsActive(name, binding_env)) {
+      stop("Worker function refers to active binding `", name,
+           "`; pass its value explicitly through `args`.", call. = FALSE)
+    }
+    value <- get(name, envir = binding_env, inherits = FALSE)
+    if (is.function(value)) {
+      value <- worker_copy_function(value, state)
+    } else if (inherits(value, "formula")) {
+      value <- worker_copy_formula(value, state)
+    }
+    assign(name, value, envir = target_env)
+  }
+  copy
+}
+
+worker_copy_formula <- function(formula, state) {
+  source_env <- environment(formula)
+  if (is.null(source_env) || identical(source_env, baseenv()) ||
+      identical(source_env, emptyenv()) || isNamespace(source_env)) return(formula)
+  probe <- function() NULL
+  body(probe) <- formula
+  environment(probe) <- source_env
+  copied <- worker_copy_function(probe, state)
+  environment(formula) <- environment(copied)
+  formula
+}
+
+worker_prepare_payload <- function(fn, args, packages) {
+  state <- new.env(parent = emptyenv())
+  state$originals <- list()
+  state$copies <- list()
+  state$environments <- list()
+  copied <- worker_copy_function(fn, state)
+  list(fn = copied, args = args, packages = packages,
+       worker_environments = state$environments)
+}
+
+# Report binding names and shallow object sizes only. Used by CI diagnostics;
+# values and serialized contents are never printed.
+worker_environment_summary <- function(fn, max_bindings = 8L,
+                                      max_inspected_bindings = 200L) {
+  env <- environment(fn)
+  if (is.null(env)) return("primitive")
+  result <- character()
+  depth <- 0L
+  repeat {
+    depth <- depth + 1L
+    category <- if (identical(env, globalenv())) "global" else if (isNamespace(env)) {
+      paste0("namespace:", getNamespaceName(env))
+    } else if (startsWith(environmentName(env), "package:")) {
+      "attached-package"
+    } else if (identical(env, baseenv())) "base" else if (identical(env, emptyenv())) "empty" else "local"
+    bindings <- ls(env, all.names = TRUE)
+    sizes <- numeric()
+    inspect_bindings <- depth <= 3L && length(bindings) <= max_inspected_bindings &&
+      !identical(env, globalenv()) && !isNamespace(env) &&
+      !identical(env, baseenv()) && !identical(env, emptyenv())
+    if (inspect_bindings) for (name in bindings) {
+      if (bindingIsActive(name, env)) next
+      value <- tryCatch(get(name, envir = env, inherits = FALSE), error = function(e) NULL)
+      if (!is.null(value)) sizes[[name]] <- as.numeric(object.size(value))
+    }
+    if (length(sizes)) {
+      top <- head(sort(sizes, decreasing = TRUE), max_bindings)
+      detail <- paste(paste0(names(top), ":", format(top, scientific = FALSE, trim = TRUE)), collapse = ",")
+    } else detail <- ""
+    result <- c(result, sprintf("%d:%s bindings=%d top=[%s]", depth, category, length(bindings), detail))
+    if (identical(env, emptyenv()) || depth >= 20L) break
+    env <- parent.env(env)
+  }
+  paste(result, collapse = " > ")
+}
+
+# Report only environment categories; binding names and shallow sizes are
+# emitted separately only when the targeted CI diagnostic flag is enabled.
 worker_environment_chain <- function(fn) {
   env <- environment(fn)
   if (is.null(env)) return("primitive")
@@ -126,6 +241,7 @@ Worker <- R6::R6Class(
     exited_at = NULL,
 
     start_process = function(app, fn, args, packages, timeout) {
+      payload <- worker_prepare_payload(fn, args, packages)
       private$app <- app
       private$timeout <- timeout
       job <- tempfile("termr-job-", fileext = ".rds")
@@ -140,7 +256,6 @@ Worker <- R6::R6Class(
       private$files <- c(job, out, prog, scratch, trace)
       private$progress_file <- prog
       private$trace_file <- trace
-      payload <- list(fn = fn, args = args, packages = packages)
       saveRDS(payload, job)
       job_size <- file.info(job)$size
       if (!file.exists(job) || is.na(job_size) || job_size <= 0) {
@@ -154,6 +269,11 @@ Worker <- R6::R6Class(
         message("termr worker job shape: fn_env_chain=", worker_environment_chain(fn),
                 " args_bytes=", as.numeric(object.size(args)),
                 " packages_count=", length(packages), " rds_bytes=", job_size)
+        if (identical(Sys.getenv("TERMR_WORKER_DIAG_ENV"), "1")) {
+          message("termr worker source env: ", worker_environment_summary(fn))
+          message("termr worker captured envs=", length(payload$worker_environments),
+                  " payload_bytes=", length(serialize(payload, NULL, version = 3L)))
+        }
         message("termr worker parent_before_read_rds: ", basename(job),
                 " size=", job_size, " object_bytes=", as.numeric(object.size(payload)))
         tryCatch(readRDS(job), error = function(e) {
@@ -436,9 +556,14 @@ Worker <- R6::R6Class(
 #' during long computations (model fitting, downloads, file processing).
 #' `app$run_process()` does the same for an external program.
 #'
-#' The function runs in a fresh R session (`Rscript --vanilla`): it cannot
-#' see your global variables. Pass data through `args` and list the
-#' packages it needs in `packages`. Inside the function,
+#' The function runs in a fresh R session (`Rscript --vanilla`), so it cannot
+#' directly access the caller's global environment. Lexical values referenced
+#' by the function are captured by value in a small environment; unrelated
+#' bindings in the enclosing environment are omitted. For example, a function
+#' using a local `scalar` binding works without serializing other locals.
+#' Dynamic lexical lookup (`get()`, `eval()` or `parent.frame()`) and active
+#' bindings are rejected; pass those values explicitly through `args`. Prefer
+#' `args` for large data and list required packages in `packages`. Inside the function,
 #' `termr_progress(value, message)` reports progress on a channel of its
 #' own, so anything the function prints to stdout or stderr is free for
 #' `on_stdout` / `on_stderr` (`message()` goes to stderr).
@@ -464,8 +589,9 @@ Worker <- R6::R6Class(
 #' Temporary files (the job, the result and the progress file) have unique
 #' names and are removed when the worker ends, however it ends.
 #'
-#' The job (the function with its closure environment, and `args`) is
-#' serialized to a temporary file, and workers and programs inherit the app's
+#' The job (the function with its referenced lexical bindings, and `args`) is
+#' serialized to a temporary file. Explicitly referenced objects and values in
+#' `args` are still serialized. Workers and programs inherit the app's
 #' environment variables: avoid putting secrets into worker closures or
 #' arguments unnecessarily.
 #'

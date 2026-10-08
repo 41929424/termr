@@ -85,9 +85,14 @@ during long computations (model fitting, downloads, file processing).
 \code{app$run_process()} does the same for an external program.
 }
 \details{
-The function runs in a fresh R session (\code{Rscript --vanilla}): it cannot
-see your global variables. Pass data through \code{args} and list the
-packages it needs in \code{packages}. Inside the function,
+The function runs in a fresh R session (\code{Rscript --vanilla}), so it
+cannot directly access the caller's global environment. Lexical values
+referenced by the function are captured by value in a small environment;
+unrelated bindings in the enclosing environment are omitted. Dynamic lexical
+lookup (\code{get()}, \code{eval()} or \code{parent.frame()}) is rejected;
+active bindings are also rejected. Pass those values explicitly through
+\code{args}. Prefer \code{args} for large data and list required packages in
+\code{packages}. Inside the function,
 \code{termr_progress(value, message)} reports progress on a channel of its
 own, so anything the function prints to stdout or stderr is free for
 \code{on_stdout} / \code{on_stderr} (\code{message()} goes to stderr).
@@ -113,8 +118,9 @@ processes, if it does not end within a short grace period.
 Temporary files (the job, the result and the progress file) have unique
 names and are removed when the worker ends, however it ends.
 
-The job (the function with its closure environment, and \code{args}) is
-serialized to a temporary file, and workers and programs inherit the app's
+The job (the function with its referenced lexical bindings, and \code{args})
+is serialized to a temporary file. Explicitly referenced objects and values
+in \code{args} are still serialized. Workers and programs inherit the app's
 environment variables: avoid putting secrets into worker closures or
 arguments unnecessarily.
 

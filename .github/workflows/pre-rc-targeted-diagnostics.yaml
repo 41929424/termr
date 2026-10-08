@@ -75,6 +75,7 @@ jobs:
       PRECEDING_INDICES: ${{ inputs.preceding_indices || '24-25,38,44,55,59,72' }}
       NOT_CRAN: true
       TERMR_WORKER_DIAG_READRDS: '1'
+      TERMR_WORKER_DIAG_ENV: '1'
       TERMR_CI_RESOURCE_SNAPSHOT: '1'
     steps:
       - uses: actions/checkout@v4

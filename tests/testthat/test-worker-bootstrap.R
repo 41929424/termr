@@ -52,6 +52,87 @@ test_that("probe A2: base function, scalar closure and parent readRDS complete",
   expect_worker_gone(closure_result)
 })
 
+test_that("worker payloads omit unused caller bindings but retain lexical captures", {
+  capture_env <- new.env(parent = baseenv())
+  capture_env$junk <- raw(50 * 1024^2)
+  capture_env$scalar <- 11L
+  for (i in seq_len(256L)) {
+    assign(sprintf("unrelated_%03d", i), seq_len(32L), envir = capture_env)
+  }
+  fn <- eval(quote(function() scalar + 1L), envir = capture_env)
+
+  old_payload <- list(fn = fn, args = list(), packages = character())
+  old_fn_bytes <- length(serialize(fn, NULL, version = 3L))
+  old_bytes <- length(serialize(old_payload, NULL, version = 3L))
+  payload <- worker_prepare_payload(fn, list(), character())
+  new_fn_bytes <- length(serialize(payload$fn, NULL, version = 3L))
+  new_bytes <- length(serialize(payload, NULL, version = 3L))
+  expect_gt(old_bytes, 50 * 1024^2)
+  expect_lt(new_bytes, 1024^2)
+
+  old_rds <- tempfile("termr-old-payload-")
+  new_rds <- tempfile("termr-new-payload-")
+  withr::defer(unlink(c(old_rds, new_rds)))
+  saveRDS(old_payload, old_rds, compress = FALSE)
+  saveRDS(payload, new_rds, compress = FALSE)
+  old_rds_bytes <- file.info(old_rds)$size
+  new_rds_bytes <- file.info(new_rds)$size
+  expect_gt(old_rds_bytes, 50 * 1024^2)
+  expect_lt(new_rds_bytes, 1024^2)
+
+  if (identical(Sys.getenv("TERMR_WORKER_DIAG_ENV"), "1")) {
+    message("WORKER_CAPTURE_DIAG old_fn_bytes=", old_fn_bytes,
+            " new_fn_bytes=", new_fn_bytes,
+            " old_payload_bytes=", old_rds_bytes,
+            " new_payload_bytes=", new_rds_bytes,
+            " unused_binding_bytes=", as.numeric(object.size(capture_env$junk)),
+            " source_env={", worker_environment_summary(fn, max_inspected_bindings = 1024L), "}")
+  }
+
+  used <- eval(quote(function() length(junk)), envir = capture_env)
+  used_payload <- worker_prepare_payload(used, list(), character())
+  used_bytes <- length(serialize(used_payload, NULL, version = 3L))
+  expect_gt(used_bytes, 50 * 1024^2)
+
+  withr::local_envvar(TERMR_WORKER_DIAG_READRDS = "1")
+  result <- probe_worker(fn)
+  expect_identical(result$worker$result, 12L)
+  expect_match(result$diagnostics, "phase=result_written")
+  expect_match(result$worker$.__enclos_env__$private$spawn_info,
+               "job_bytes=[0-9]{1,6}($|[^0-9])")
+  expect_worker_gone(result)
+})
+
+test_that("worker captures preserve nested helpers and recursive closures", {
+  multiplier <- 3L
+  helper <- function(x) x * multiplier
+  nested <- function(x) helper(x) + stats::median(1:3)
+  nested_result <- probe_worker(nested, args = list(x = 4L))
+  expect_identical(nested_result$worker$result, 14)
+  expect_match(nested_result$diagnostics, "phase=result_written")
+  expect_worker_gone(nested_result)
+
+  factorial <- function(n) if (n <= 1L) 1L else n * factorial(n - 1L)
+  recursive <- probe_worker(function(n) factorial(n), args = list(n = 6L))
+  expect_identical(recursive$worker$result, 720L)
+  expect_match(recursive$diagnostics, "phase=result_written")
+  expect_worker_gone(recursive)
+})
+
+test_that("unsupported dynamic lookup and active bindings fail before spawn", {
+  expect_error(worker_prepare_payload(function() get("value"), list(), character()),
+               "dynamic lexical lookup.*args")
+  evaluated <- FALSE
+  env <- new.env(parent = baseenv())
+  makeActiveBinding("active_value", function() {
+    evaluated <<- TRUE
+    1L
+  }, env)
+  active_fn <- eval(quote(function() active_value), envir = env)
+  expect_error(worker_prepare_payload(active_fn, list(), character()), "active binding.*args")
+  expect_false(evaluated)
+})
+
 test_that("the exact testthat worker job is readable by a clean Rscript", {
   pilot <- test_app(app(label("x")), 20, 2)
   withr::defer(pilot$stop())

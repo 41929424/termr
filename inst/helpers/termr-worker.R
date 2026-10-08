@@ -51,7 +51,8 @@ local({
   job <- readRDS(job_path)
   trace_phase("after_read_rds", paste0("object_bytes=", as.numeric(object.size(job))))
   if (!is.list(job) || !is.function(job$fn) || !is.list(job$args) ||
-      !is.character(job$packages)) {
+      !is.character(job$packages) || !is.list(job$worker_environments) ||
+      !all(vapply(job$worker_environments, is.environment, logical(1)))) {
     stop("The termr worker job payload is invalid.", call. = FALSE)
   }
   trace_phase("payload_validated")
@@ -66,6 +67,10 @@ local({
     }
     invisible(value)
   }, envir = globalenv())
+  # The serialized capture environments have only baseenv() as a parent, so
+  # the parent's global/test environment is never serialized. Reconnect them
+  # here, after packages and worker helpers are available.
+  for (env in job$worker_environments) parent.env(env) <- globalenv()
   trace_phase("payload_started")
   result <- tryCatch(
     list(ok = TRUE, value = do.call(job$fn, job$args)),
