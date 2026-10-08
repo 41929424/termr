@@ -108,7 +108,7 @@ test_that("worker captures preserve nested helpers and recursive closures", {
   helper <- function(x) x * multiplier
   nested <- function(x) helper(x) + stats::median(1:3)
   nested_result <- probe_worker(nested, args = list(x = 4L))
-  expect_identical(nested_result$worker$result, 14)
+  expect_identical(nested_result$worker$result, 14L)
   expect_match(nested_result$diagnostics, "phase=result_written")
   expect_worker_gone(nested_result)
 

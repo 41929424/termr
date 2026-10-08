@@ -118,10 +118,10 @@ worker_environment_summary <- function(fn, max_bindings = 8L,
     if (inspect_bindings) for (name in bindings) {
       if (bindingIsActive(name, env)) next
       value <- tryCatch(get(name, envir = env, inherits = FALSE), error = function(e) NULL)
-      if (!is.null(value)) sizes[[name]] <- as.numeric(object.size(value))
+      if (!is.null(value)) sizes[[name]] <- as.numeric(utils::object.size(value))
     }
     if (length(sizes)) {
-      top <- head(sort(sizes, decreasing = TRUE), max_bindings)
+      top <- utils::head(sort(sizes, decreasing = TRUE), max_bindings)
       detail <- paste(paste0(names(top), ":", format(top, scientific = FALSE, trim = TRUE)), collapse = ",")
     } else detail <- ""
     result <- c(result, sprintf("%d:%s bindings=%d top=[%s]", depth, category, length(bindings), detail))
