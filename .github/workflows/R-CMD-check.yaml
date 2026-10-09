@@ -47,6 +47,51 @@ jobs:
           NOT_CRAN: true
         run: Rscript -e "testthat::test_local(reporter = 'summary')"
 
+  cran-incoming:
+    # The matrix above uses --no-manual and skips CRAN's incoming checks.
+    # This job checks the built tarball as CRAN's incoming checks do: PDF
+    # manual, remote URLs, and README/NEWS links to files not in the package.
+    runs-on: ubuntu-latest
+    name: CRAN incoming (R-devel, built tarball)
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-pandoc@v2
+      - name: Install TeX, qpdf and HTML Tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-base texlive-latex-recommended texlive-latex-extra \
+            texlive-fonts-recommended texlive-fonts-extra qpdf tidy
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: devel
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          needs: check
+      - name: Build source tarball
+        run: R CMD build .
+      - name: R CMD check --as-cran on the tarball
+        env:
+          _R_CHECK_CRAN_INCOMING_: true
+          _R_CHECK_CRAN_INCOMING_REMOTE_: true
+          _R_CHECK_CRAN_INCOMING_CHECK_FILE_URIS_: true
+        run: |
+          status=0
+          R CMD check --as-cran termr_*.tar.gz || status=$?
+          cat termr.Rcheck/00check.log
+          # R CMD check exits 0 on WARNING; fail on WARNING or ERROR.
+          grep -q '^Status:' termr.Rcheck/00check.log || exit 1
+          if grep -Eq '^Status:.*(ERROR|WARNING)' termr.Rcheck/00check.log; then exit 1; fi
+          exit "$status"
+      - name: Upload check directory
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cran-incoming-check
+          path: termr.Rcheck
+
   SQL-integration:
     runs-on: ubuntu-latest
     name: SQL integration (DBI + SQLite)

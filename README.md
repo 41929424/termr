@@ -3,7 +3,7 @@
 > Modern reactive terminal applications for R, with first-class support for
 > data workflows.
 
-![termr data explorer showing a virtualized table, metrics and row details](docs/images/data-explorer.png)
+![termr data explorer showing a virtualized table, metrics and row details](https://raw.githubusercontent.com/41929424/termr/main/docs/images/data-explorer.png)
 
 Build modern terminal applications with R: data explorers, dashboards,
 database browsers, SQL workspaces and internal analytical tools. termr combines
@@ -58,15 +58,15 @@ to be stable. To inspect a data frame directly, call `browse_data(mtcars)`.
 
 `data_table()` formats and paints the visible viewport. In-memory tables
 support sorting, filtering, search, selection, and resizable, hidden and
-frozen columns. [Lazy table sources](docs/data-sources.md) fetch bounded pages
+frozen columns. [Lazy table sources](https://github.com/41929424/termr/blob/main/docs/data-sources.md) fetch bounded pages
 without loading a whole dataset into an R data frame. SQLite table and query
 adapters are included; other DBI drivers can provide paging callbacks.
 
 `sql_editor()`, `db_connection()` and `db_explorer()` compose SQL editing,
 database metadata and result browsing through optional DBI packages. Query
 execution and page fetches are synchronous; background workers are available
-for separate analytical jobs. See [data tools](docs/data.md),
-[SQL workflows](docs/sql.md) and [database explorer](docs/database-explorer.md).
+for separate analytical jobs. See [data tools](https://github.com/41929424/termr/blob/main/docs/data.md),
+[SQL workflows](https://github.com/41929424/termr/blob/main/docs/sql.md) and [database explorer](https://github.com/41929424/termr/blob/main/docs/database-explorer.md).
 
 ```r
 run_example()                  # list bundled examples
@@ -81,7 +81,7 @@ trees, Markdown, metrics and sparklines. Add generated help, modal dialogs,
 notifications and a command palette. Stylesheets and themes include
 monochrome/`NO_COLOR`, high contrast and reduced motion.
 
-![termr widget showcase with tabs, metrics, progress and a sparkline](docs/images/widget-showcase.png)
+![termr widget showcase with tabs, metrics, progress and a sparkline](https://raw.githubusercontent.com/41929424/termr/main/docs/images/widget-showcase.png)
 
 This screenshot comes from the RC1 source tree and displays its package
 version, `0.9.0.9000`.
@@ -93,16 +93,17 @@ screen snapshots; static rendering does not start an app event loop.
 
 ## Installation
 
-termr requires R >= 4.1 and is not on CRAN yet. Install from GitHub:
+termr requires R >= 4.1. Once termr is available on CRAN, install the
+released version with:
+
+```r
+install.packages("termr")
+```
+
+Install the version on GitHub with:
 
 ```r
 remotes::install_github("41929424/termr")
-```
-
-To install the immutable release candidate exactly:
-
-```r
-remotes::install_github("41929424/termr", ref = "v1.0.0-rc1")
 ```
 
 Or install a local checkout:
@@ -111,10 +112,8 @@ Or install a local checkout:
 remotes::install_local("path/to/termr")
 ```
 
-The `v1.0.0-rc1` tag points to `1846527d3968cdd12fa9900bbe80a9f2a89a1a3e`.
-Its source intentionally retains `Version: 0.9.0.9000`; final 1.0 has not
-shipped. termr uses a small set of R runtime dependencies and keeps DBI,
-RSQLite, jsonlite and knitr optional. termr itself has no compiled source code.
+termr uses a small set of R runtime dependencies and keeps DBI, RSQLite,
+jsonlite and knitr optional. termr itself has no compiled source code.
 
 ## Where it runs
 
@@ -127,10 +126,10 @@ For RC1, Windows real interactive console smoke and Linux through a real
 `ssh -t` session were manually reported PASS. macOS real terminal, tmux,
 screen and RStudio Terminal have not been manually validated. RStudio and
 Positron consoles are not terminal hosts; use their terminal tabs for
-interactive apps. See the [platform matrix](docs/platform-testing.md) and
-[SSH guide](docs/ssh.md) for evidence and limits.
+interactive apps. See the [platform matrix](https://github.com/41929424/termr/blob/main/docs/platform-testing.md) and
+[SSH guide](https://github.com/41929424/termr/blob/main/docs/ssh.md) for evidence and limits.
 
-For knitr, CI and other non-TTY contexts, use [static export](docs/export.md).
+For knitr, CI and other non-TTY contexts, use [static export](https://github.com/41929424/termr/blob/main/docs/export.md).
 
 ## Testing
 
@@ -141,7 +140,7 @@ pilot$stop()
 ```
 
 `test_app()` uses the real event loop and renderer with simulated input and
-time. [Testing](docs/testing.md) covers keys, mouse, paste, resize, workers
+time. [Testing](https://github.com/41929424/termr/blob/main/docs/testing.md) covers keys, mouse, paste, resize, workers
 and snapshots. [Full CI run 37758703750](https://github.com/41929424/termr/actions/runs/37758703750)
 passed on the RC1 commit: Ubuntu release, oldrel-1, R 4.1 and devel; macOS
 and Windows release; SQL integration; Linux/macOS PTY; and Windows input.
@@ -149,22 +148,23 @@ The six R CMD check jobs reported 0 errors, 0 warnings and 0 notes.
 
 ## API stability
 
-termr is in the 1.0 release-candidate phase. Core app/widget construction,
+termr 1.0.0 is the first stable release. Core app/widget construction,
 layout basics, events, commands, styling/themes, in-memory DataTable and
-testing basics are intended to remain compatible through 1.0. The reactive
+testing basics form the stable API; incompatible changes will be called out
+in NEWS and migration notes. The reactive
 graph, workers, editor, lazy sources, database support, static export and
 custom extensions remain experimental. Workflow widgets added late in the
 pre-1.0 cycle also remain experimental. The complete classification is in
-[API stability](docs/stability.md); see [migration notes](docs/migration-to-1.0.md)
+[API stability](https://github.com/41929424/termr/blob/main/docs/stability.md); see [migration notes](https://github.com/41929424/termr/blob/main/docs/migration-to-1.0.md)
 and [NEWS](NEWS.md) for changes.
 
 ## Documentation
 
-Start with [Getting started](docs/getting-started.md), then explore
-[widgets](docs/widgets.md), [layouts](docs/layout.md), [events](docs/events.md),
-[reactivity](docs/reactivity.md), [styling](docs/styling.md),
-[workers](docs/workers.md) and [extensions](docs/extensions.md).
-[ARCHITECTURE.md](ARCHITECTURE.md) describes the implementation for contributors.
+Start with [Getting started](https://github.com/41929424/termr/blob/main/docs/getting-started.md), then explore
+[widgets](https://github.com/41929424/termr/blob/main/docs/widgets.md), [layouts](https://github.com/41929424/termr/blob/main/docs/layout.md), [events](https://github.com/41929424/termr/blob/main/docs/events.md),
+[reactivity](https://github.com/41929424/termr/blob/main/docs/reactivity.md), [styling](https://github.com/41929424/termr/blob/main/docs/styling.md),
+[workers](https://github.com/41929424/termr/blob/main/docs/workers.md) and [extensions](https://github.com/41929424/termr/blob/main/docs/extensions.md).
+[ARCHITECTURE.md](https://github.com/41929424/termr/blob/main/ARCHITECTURE.md) describes the implementation for contributors.
 
 ## License
 

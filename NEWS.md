@@ -1,10 +1,17 @@
-# termr 1.0.0 (release candidate)
+# termr 1.0.0
 
-The immutable tag `v1.0.0-rc1` points to
-`1846527d3968cdd12fa9900bbe80a9f2a89a1a3e`. Its DESCRIPTION intentionally
-retains `Version: 0.9.0.9000`; final 1.0 has not shipped. This section
-summarizes the pre-1.0 work included in that source. Stability classifications
-are defined in [API stability](docs/stability.md).
+First stable release, prepared as the first CRAN submission. This section summarizes the
+pre-1.0 work. Stability classifications are defined in
+[API stability](https://github.com/41929424/termr/blob/main/docs/stability.md).
+
+The release candidate tag `v1.0.0-rc1` points to
+`1846527d3968cdd12fa9900bbe80a9f2a89a1a3e`, whose DESCRIPTION retains
+`Version: 0.9.0.9000`. Changes since that tag are limited to documentation,
+release metadata and the following:
+
+* `DESCRIPTION` gains `URL` and `BugReports`.
+* The `animate()` and `run_worker()` examples now run headlessly with
+  `test_app()` instead of being wrapped in `\dontrun{}`.
 
 ## Highlights
 
@@ -63,8 +70,8 @@ are defined in [API stability](docs/stability.md).
   passed on the RC1 source: Ubuntu release, oldrel-1, R 4.1 and devel;
   macOS/Windows release; SQL integration; Linux/macOS PTY; Windows input.
   All six R CMD check jobs reported 0 errors, 0 warnings and 0 notes.
-* Windows real interactive console and Linux through real `ssh -t` smoke
-  were manually reported PASS. macOS real terminal, tmux, screen and RStudio
+* For RC1, Windows real interactive console and Linux through real `ssh -t`
+  smoke were manually reported PASS. macOS real terminal, tmux, screen and RStudio
   Terminal remain NOT RUN. PTY CI is separate from manual console validation.
 
 ## Static export
@@ -172,7 +179,7 @@ compatibility aliases; options are `termr.*`, variables `TERMR_*`).
   skip the layout pass (`invalidate_paint()`, `paint_states`).
 * Scroll views lay out only the children in view.
 * New benchmark suite (`tools/bench/bench.R`, `compare.R`) measuring batches of
-  ticks and the repainted area; see [docs/performance.md](docs/performance.md).
+  ticks and the repainted area; see [docs/performance.md](https://github.com/41929424/termr/blob/main/docs/performance.md).
 
 ## Widgets
 

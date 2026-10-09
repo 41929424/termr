@@ -1,9 +1,9 @@
 Package: termr
 Title: Modern Reactive Terminal Applications with Data Workflows
-Version: 0.9.0.9000
+Version: 1.0.0
 Authors@R:
-    person("termr", "authors", email = "akimm7926@gmail.com",
-           role = c("aut", "cre"))
+    person("Akims", "Mensikovs", email = "akimm7926@gmail.com",
+           role = c("aut", "cre", "cph"))
 Description: Build modern reactive terminal applications for data workflows
     in R using composable widgets, layouts, events, focus management and
     themes. A virtual framebuffer and incremental rendering update changed
@@ -14,6 +14,8 @@ Description: Build modern reactive terminal applications for data workflows
     JSON exports support analytical tools and reports without requiring an
     interactive terminal for static output.
 License: MIT + file LICENSE
+URL: https://github.com/41929424/termr
+BugReports: https://github.com/41929424/termr/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Depends:

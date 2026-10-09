@@ -1,15 +1,13 @@
 # API stability
 
-termr is in the 1.0 release-candidate phase; final 1.0 has not shipped.
-The immutable `v1.0.0-rc1` tag intentionally retains package version
-`0.9.0.9000`. This page defines
+This page applies to termr 1.0.0, the first stable release. It defines
 which parts of the package are intended for application authors, which remain
 experimental, and which are implementation details. The [API inventory](api-inventory.md)
 lists every current export, its implementation and its Rd topic.
 
 ## Stable API
 
-These APIs are intended to remain compatible through 1.0. Bug fixes may
+These APIs are stable in termr 1.0. Bug fixes may
 correct behavior that contradicts their documentation; incompatible changes
 will be called out in NEWS and migration notes.
 

@@ -47,6 +47,15 @@ overlays, scroll views), random resize and focus sequences keep geometry and
 focus valid, the key parser gives the same events however input is split, scroll offsets stay in range, grid
 allocations sum correctly, and parent/child pointers stay consistent.
 
+On CRAN (`NOT_CRAN` unset), `skip_on_cran()` skips only tests whose
+outcome depends on subprocess timing (worker timeouts, cancellation,
+streaming and long-running child programs) and two long example-app
+scenarios (`data-explorer`, and `task-runner`, which waits for background
+workers), to keep check time short. Worker spawn, result, error and
+`R_TESTS` isolation probes still run there. CI runs the full suite with `NOT_CRAN=true`.
+No test needs an interactive terminal; the POSIX driver test is skipped on
+Windows.
+
 Terminal integration and RC1 validation:
 
 * Windows CI checks the PowerShell script, numeric input protocol and shared

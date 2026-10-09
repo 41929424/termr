@@ -24,12 +24,20 @@ Start with \code{\link[=app]{app()}}, the widget constructors (\code{\link[=vert
 lazy sources, static export and custom extensions remain experimental;
 see the repository's API stability guide for the complete classification.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/41929424/termr}
+  \item Report bugs at \url{https://github.com/41929424/termr/issues}
+}
+
+}
 \author{
-\strong{Maintainer}: termr authors \email{akimm7926@gmail.com}
+\strong{Maintainer}: Akims Mensikovs \email{akimm7926@gmail.com} [copyright holder]
 
 Authors:
 \itemize{
-  \item termr authors \email{akimm7926@gmail.com}
+  \item Akims Mensikovs \email{akimm7926@gmail.com} [copyright holder]
 }
 
 }

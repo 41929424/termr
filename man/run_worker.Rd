@@ -138,18 +138,15 @@ processes, \code{pilot$wait_for_workers()} waits until they finish.
 }
 
 \examples{
-\dontrun{
-app$run_worker(
-  function(n) {
-    for (i in seq_len(n)) {
-      Sys.sleep(0.1)
-      termr_progress(i / n, paste("step", i))
-    }
-    "done"
-  },
+pilot <- test_app(app(label("Jobs")), width = 30, height = 1)
+# `inline = TRUE` runs the job in this process; without it, the same call
+# starts a background R process, where `termr_progress()` is available.
+pilot$app$run_worker(
+  function(n) sum(seq_len(n)),
   args = list(n = 20),
-  on_complete = function(result, app) app$notify(result)
+  inline = TRUE,
+  on_complete = function(result, app) message("result: ", result)
 )
-app$run_process("ls", c("-l", "/tmp"), on_stdout = function(line, app) message(line))
-}
+pilot$step()
+pilot$stop()
 }
