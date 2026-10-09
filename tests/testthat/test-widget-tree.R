@@ -181,7 +181,7 @@ test_that("parent and child pointers stay consistent under random edits", {
   root <- vertical()
   pool <- lapply(1:15, function(i) if (i %% 3 == 0) vertical() else label(paste(i)))
   containers <- c(list(root), Filter(function(w) inherits(w, "Vertical"), pool))
-  for (step in 1:200) {
+  for (step in seq_len(stress_workload(200L, 40L))) {
     w <- sample(pool, 1)[[1]]
     target <- sample(containers, 1)[[1]]
     op <- sample(c("mount", "remove", "before"), 1)

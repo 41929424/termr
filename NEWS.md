@@ -1,3 +1,11 @@
+# termr 1.0.1
+
+CRAN resubmission following the initial 1.0.0 submission (not published on CRAN).
+
+* Revise DESCRIPTION wording to resolve incoming spell-check notes.
+* Bound expensive deterministic stress/property workloads on CRAN to reduce
+  check time; `NOT_CRAN=true` retains the full seed and iteration counts.
+
 # termr 1.0.0
 
 First stable release, prepared as the first CRAN submission. This section summarizes the

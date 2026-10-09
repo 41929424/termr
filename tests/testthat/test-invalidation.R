@@ -107,14 +107,14 @@ test_that("skipping layout never changes what is on the screen", {
       function() pilot$resize(sample(25:50, 1), sample(12:24, 1)),
       function() pilot$press("ctrl+z")
     )
-    for (i in 1:80) {
+    for (i in seq_len(stress_workload(80L, 30L))) {
       ops[[sample(length(ops), 1)]]()
       pilot$step()
       frames[[i]] <- pilot$screen_text()
     }
     frames
   }
-  for (seed in 1:3) {
+  for (seed in stress_workload(1:3, 1L)) {
     expect_identical(run(TRUE, seed), run(FALSE, seed), info = seed)
   }
 })
