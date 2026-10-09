@@ -43,13 +43,13 @@ random_ops <- function(a, pilot, counter) {
 }
 
 test_that("rectangular incremental repaint equals a full repaint (randomised, rich UI)", {
-  for (seed in c(11, 12, 13)) {
+  for (seed in stress_workload(c(11, 12, 13), 11)) {
     set.seed(seed)
     a <- app(rich_ui())
     pilot <- test_app(a, 62, 22)
     ops <- random_ops(a, pilot)
     log <- character()
-    for (i in 1:100) {
+    for (i in seq_len(stress_workload(100L, 40L))) {
       k <- sample(length(ops), 1)
       log <- c(log, k)
       op <- ops[[k]]
@@ -81,7 +81,7 @@ test_that("a rectangle edge never cuts a wide grapheme", {
 })
 
 test_that("lazy scroll-view layout and rectangular repaint match a full render (randomised)", {
-  for (seed in 21:23) {
+  for (seed in stress_workload(21:23, 21L)) {
     set.seed(seed)
     a <- app(vertical(
       label("header", id = "hdr"),
@@ -101,7 +101,7 @@ test_that("lazy scroll-view layout and rectangular repaint match a full render (
       function() a$query_one("#w10")$set(visible = sample(c(TRUE, FALSE), 1))
     )
     log <- integer()
-    for (i in 1:80) {
+    for (i in seq_len(stress_workload(80L, 30L))) {
       k <- sample(length(ops), 1)
       log <- c(log, k)
       ops[[k]]()

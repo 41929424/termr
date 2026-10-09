@@ -46,14 +46,16 @@ test_that("resizing through extreme sizes never breaks the UI", {
   sizes <- list(c(1, 1), c(2, 2), c(5, 3), c(10, 5), c(40, 10), c(80, 24), c(120, 40), c(200, 60), c(300, 3), c(3, 80))
   pilots <- list()
   on.exit(lapply(pilots, function(pilot) pilot$stop()), add = TRUE)
-  for (seed in 1:4) {
+  for (seed in stress_workload(1:4, 1L)) {
     set.seed(seed)
     a <- app(stress_ui())
     pilot <- test_app(a, 80, 24)
     pilots[[length(pilots) + 1L]] <- pilot
     log <- character()
-    for (i in 1:30) {
-      size <- if (runif(1) < 0.6) sample(sizes, 1)[[1]] else c(sample(1:150, 1), sample(1:50, 1))
+    for (i in seq_len(stress_workload(30L, length(sizes)))) {
+      # CRAN visits every extreme explicitly, including 1x1 and 300x3.
+      size <- if (stress_workload(FALSE, TRUE)) sizes[[i]] else
+        if (runif(1) < 0.6) sample(sizes, 1)[[1]] else c(sample(1:150, 1), sample(1:50, 1))
       log <- c(log, paste(size, collapse = "x"))
       res <- tryCatch({
         pilot$resize(size[[1]], size[[2]])
@@ -87,7 +89,7 @@ focus_valid <- function(a) {
 test_that("focus is always a valid widget under random tree changes", {
   pilots <- list()
   on.exit(lapply(pilots, function(pilot) pilot$stop()), add = TRUE)
-  for (seed in 1:5) {
+  for (seed in stress_workload(1:5, 1L)) {
     set.seed(seed)
     a <- app(stress_ui())
     pilot <- test_app(a, 80, 30)
@@ -115,7 +117,7 @@ test_that("focus is always a valid widget under random tree changes", {
       resize = function() pilot$resize(sample(10:100, 1), sample(5:40, 1))
     )
     log <- character()
-    for (i in 1:80) {
+    for (i in seq_len(stress_workload(80L, 40L))) {
       nm <- sample(names(ops), 1)
       log <- c(log, nm)
       err <- tryCatch({ ops[[nm]](); pilot$step(); NULL }, error = function(e) conditionMessage(e))

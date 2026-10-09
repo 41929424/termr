@@ -309,7 +309,7 @@ test_that("random operations keep the table consistent", {
     function() d$pilot$resize(sample(8:40, 1), sample(3:10, 1)),
     function() d$pilot$press("alt+right")
   )
-  for (i in 1:150) {
+  for (i in seq_len(stress_workload(150L, 40L))) {
     ops[[sample(length(ops), 1)]]()
     n <- d$tbl$row_count
     if (n > 0L) {

@@ -52,7 +52,39 @@ outcome depends on subprocess timing (worker timeouts, cancellation,
 streaming and long-running child programs) and two long example-app
 scenarios (`data-explorer`, and `task-runner`, which waits for background
 workers), to keep check time short. Worker spawn, result, error and
-`R_TESTS` isolation probes still run there. CI runs the full suite with `NOT_CRAN=true`.
+`R_TESTS` isolation probes still run there.
+
+CRAN also runs representative bounded stress/property coverage. The test-only
+`stress_workload()` helper selects shorter workloads when `NOT_CRAN` is unset
+or false. CI with `NOT_CRAN=true` keeps the original seeds, iterations, random
+operation sequences and assertions:
+
+| Property/stress scenario | CRAN workload | Full CI workload |
+| --- | --- | --- |
+| Extreme resize | Seed 1, all 10 listed extreme sizes | Seeds 1–4, 30 random sizes each |
+| Focus under tree changes | Seed 1, 40 operations | Seeds 1–5, 80 operations each |
+| Rich UI incremental/full repaint | Seed 11, 40 operations | Seeds 11–13, 100 operations each |
+| Lazy scroll layout/full repaint | Seed 21, 30 operations | Seeds 21–23, 80 operations each |
+| Parent/child tree consistency | Seed 11, 40 edits | Seed 11, 200 edits |
+| Layout skipping/full layout | Seed 1, 30 operations in each mode | Seeds 1–3, 80 operations in each mode |
+| Incremental/full repaint | Seed 2026, 50 operations | Seed 2026, 120 operations |
+| Table consistency | Seed 11, 40 operations | Seed 11, 150 operations |
+| Grid invariants | Seed 7, 12 grids | Seed 7, 40 grids |
+
+These loops still check their original invariants, including comparisons with
+full rendering, focus validity, geometry, scroll offsets and parent/child
+pointers. CRAN explicitly visits every listed extreme terminal size, including
+1×1, 300×3 and 3×80. No functional area is newly skipped, and the deterministic
+functional tests and worker probes keep their original workloads and timeouts.
+
+For a source-tree CRAN-mode run, use an explicit false value because
+`test_local()` assumes `NOT_CRAN=true` when the variable is unset:
+
+```r
+withr::with_envvar(c(NOT_CRAN = "false"), testthat::test_local())
+withr::with_envvar(c(NOT_CRAN = "true"), testthat::test_local())
+```
+
 No test needs an interactive terminal; the POSIX driver test is skipped on
 Windows.
 

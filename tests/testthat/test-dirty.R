@@ -27,7 +27,7 @@ test_that("incremental repaints match full repaints (randomised)", {
     function() if (length(a$screens) > 1) a$pop_screen(),
     function() a$query_one("#footer")$set(style = style(foreground = sample(c("red", "green"), 1)))
   )
-  for (i in 1:120) {
+  for (i in seq_len(stress_workload(120L, 50L))) {
     sample(ops, 1)[[1]]()
     pilot$step()
     expect_true(a$frame$equals(full_frame(a)), info = paste("step", i))

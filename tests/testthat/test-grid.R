@@ -51,7 +51,7 @@ test_that("auto-height grids measure their rows", {
 
 test_that("grid invariants hold for random grids", {
   set.seed(7)
-  for (trial in 1:40) {
+  for (trial in seq_len(stress_workload(40L, 12L))) {
     ncol <- sample(1:4, 1)
     n <- sample(1:10, 1)
     kids <- lapply(seq_len(n), function(i) {

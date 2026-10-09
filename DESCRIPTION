@@ -1,16 +1,17 @@
 Package: termr
 Title: Modern Reactive Terminal Applications with Data Workflows
-Version: 1.0.0
+Version: 1.0.1
 Authors@R:
     person("Akims", "Mensikovs", email = "akimm7926@gmail.com",
            role = c("aut", "cre", "cph"))
 Description: Build modern reactive terminal applications for data workflows
-    in R using composable widgets, layouts, events, focus management and
-    themes. A virtual framebuffer and incremental rendering update changed
+    in R using reusable widgets, layouts, events, focus management and
+    themes. A virtual screen buffer and incremental rendering update changed
     cells, while a headless driver supports deterministic application tests.
-    Includes virtualised data tables, lazy table sources, data inspection,
-    SQL editing and background R workers with progress and streamed output.
-    Optional database integrations and static text, Markdown, HTML, SVG and
+    Includes data tables that render visible rows on demand, lazy table
+    sources, data inspection, SQL editing and background R workers with
+    progress and streamed output.
+    Optional database support and static text, Markdown, HTML, SVG and
     JSON exports support analytical tools and reports without requiring an
     interactive terminal for static output.
 License: MIT + file LICENSE
