@@ -41,7 +41,10 @@ field replaces the running one. Animations stop when the widget is
 removed or the app exits.
 }
 \examples{
-\dontrun{
-animate(app$query_one("#progress"), "value", to = 1, duration = 0.5)
-}
+bar <- progress_bar(id = "progress")
+pilot <- test_app(app(bar), width = 30, height = 1)
+animate(pilot$query_one("#progress"), "value", to = 1, duration = 0.5)
+pilot$advance(1)
+bar$value
+pilot$stop()
 }

@@ -158,9 +158,12 @@ Animator <- R6::R6Class(
 #' @return An `Animation` handle with `cancel()`.
 #' @export
 #' @examples
-#' \dontrun{
-#' animate(app$query_one("#progress"), "value", to = 1, duration = 0.5)
-#' }
+#' bar <- progress_bar(id = "progress")
+#' pilot <- test_app(app(bar), width = 30, height = 1)
+#' animate(pilot$query_one("#progress"), "value", to = 1, duration = 0.5)
+#' pilot$advance(1)
+#' bar$value
+#' pilot$stop()
 animate <- function(widget, property, to, duration = 0.3, easing = "out_cubic", from = NULL,
                     on_complete = NULL) {
   if (!is_widget(widget)) stop("`widget` must be a widget.", call. = FALSE)

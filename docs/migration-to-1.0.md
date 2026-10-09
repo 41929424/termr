@@ -1,9 +1,9 @@
 # Migration to 1.0
 
-This note records the pre-1.0 changes included in the release candidate.
-`v1.0.0-rc1` points to `1846527d3968cdd12fa9900bbe80a9f2a89a1a3e`, whose
-DESCRIPTION intentionally still says `Version: 0.9.0.9000`; final 1.0 has
-not shipped.
+This note records the pre-1.0 changes included in termr 1.0.0. They were
+first tagged in the release candidate `v1.0.0-rc1`, which points to
+`1846527d3968cdd12fa9900bbe80a9f2a89a1a3e` and whose DESCRIPTION says
+`Version: 0.9.0.9000`.
 Only the experimental functions and argument listed under "Renamed functions
 and arguments" were renamed; no exported symbol is marked deprecated. The 1.0
 release plan is to keep the documented stable API listed in

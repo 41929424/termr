@@ -6,7 +6,7 @@ large to keep in an R data frame, it also accepts an experimental
 to a viewport without building the full result in memory. It is synchronous,
 and the row count must be known.
 
-The source API remains experimental in the 1.0 release candidate and under
+The source API remains experimental in termr 1.0 and under
 the [API stability policy](stability.md). The source protocol itself adds no
 runtime dependency; its database adapters use optional DBI/RSQLite packages.
 
