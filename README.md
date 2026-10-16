@@ -3,7 +3,7 @@
 > Modern reactive terminal applications for R, with first-class support for
 > data workflows.
 
-![termr data explorer showing a virtualized table, metrics and row details](https://raw.githubusercontent.com/41929424/termr/main/docs/images/data-explorer.png)
+![termr demo](https://raw.githubusercontent.com/41929424/termr/main/docs/termr-clean.gif)
 
 Build modern terminal applications with R: data explorers, dashboards,
 database browsers, SQL workspaces and internal analytical tools. termr combines
